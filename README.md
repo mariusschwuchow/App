@@ -9,6 +9,22 @@ Punkt auf der Karte angezeigt. Ein Tipp auf einen Punkt zeigt Details und erlaub
 - Speicherung: lokal auf dem Gerät, doppelt in IndexedDB und `localStorage`
 - Kein Build-Schritt nötig – reine HTML/CSS/JS-Dateien
 
+## Wetter, Luftdruck und Wasserstand
+
+Direkt nach dem Speichern einer Bewertung ruft die App zusätzlich ab und speichert mit:
+
+- **Wetter** (Open-Meteo): Wetterlage, Temperatur, gefühlte Temperatur, Wind und Böen,
+  Bewölkung, Luftfeuchte, Niederschlag
+- **Luftdruck** (Open-Meteo, auf Meereshöhe reduziert): aktuell, vor 24 Stunden (Vortag)
+  und in 24 Stunden (Folgetag, Vorhersage)
+- **Wasserstand** (PEGELONLINE des Bundes): aktueller Wert, Tendenz und Einstufung am
+  nächstgelegenen Pegel im Umkreis von 25 km, mit Pegelname, Gewässer und Entfernung.
+  PEGELONLINE enthält nur die Pegel an Bundeswasserstraßen. An kleineren Flüssen und Seen
+  gibt es oft keinen Wert.
+
+Die Bewertung selbst wird immer zuerst gespeichert. Klappt der Abruf nicht (z. B. ohne
+Netz), kann er bis zu 3 Stunden später im Punkt auf der Karte wiederholt werden.
+
 ## Datensicherheit
 
 - Jede Bewertung wird sofort beim Auswählen gespeichert, und zwar doppelt: in IndexedDB

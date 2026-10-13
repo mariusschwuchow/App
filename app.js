@@ -132,6 +132,19 @@ async function addRatings(entries) {
   return fresh.length;
 }
 
+async function updateRating(entry) {
+  await ratingsReady;
+  const index = ratings.findIndex((r) => r.id === entry.id);
+  if (index === -1) return; // wurde inzwischen gelöscht
+  ratings[index] = entry;
+  try {
+    await dbRequest('readwrite', (store) => store.put(entry));
+  } catch (err) {
+    console.warn('IndexedDB konnte nicht geschrieben werden', err);
+  }
+  writeLocalCopy();
+}
+
 async function deleteRating(id) {
   await ratingsReady;
   ratings = ratings.filter((r) => r.id !== id);
@@ -158,8 +171,116 @@ async function requestPersistentStorage() {
 
 const ratingsLayer = L.layerGroup().addTo(map);
 
+const markersById = new Map();
+const RETRY_WINDOW_MS = 3 * 60 * 60 * 1000;
+const loadingIds = new Set();
+
+function escapeHtml(text) {
+  return String(text).replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  })[c]);
+}
+
+function fmt(value, unit) {
+  return value === null || value === undefined ? '–' : `${String(value).replace('.', ',')} ${unit}`;
+}
+
+function windDirectionName(deg) {
+  if (!Number.isFinite(deg)) return '';
+  return ['N', 'NO', 'O', 'SO', 'S', 'SW', 'W', 'NW'][Math.round(deg / 45) % 8];
+}
+
+function conditionsHtml(entry) {
+  if (loadingIds.has(entry.id)) {
+    return '<div class="cond muted">Wetter und Wasserstand werden abgerufen …</div>';
+  }
+  const c = entry.conditions;
+  if (!c) return '<div class="cond muted">Keine Wetter- und Pegeldaten gespeichert.</div>';
+
+  let html = '';
+  if (c.weather) {
+    const w = c.weather;
+    html += `<div class="cond"><b>Wetter:</b> ${escapeHtml(w.description)}, ${fmt(w.temperature, '°C')}` +
+      ` (gefühlt ${fmt(w.apparentTemperature, '°C')})<br>` +
+      `Wind ${fmt(w.windSpeed, 'km/h')} ${windDirectionName(w.windDirection)}, Böen ${fmt(w.windGusts, 'km/h')}<br>` +
+      `Bewölkung ${fmt(w.cloudCover, '%')}, Feuchte ${fmt(w.humidity, '%')}, Niederschlag ${fmt(w.precipitation, 'mm')}</div>`;
+  }
+  if (c.pressure) {
+    const pr = c.pressure;
+    html += `<div class="cond"><b>Luftdruck:</b><br>` +
+      `Vortag: ${fmt(pr.yesterday, 'hPa')}<br>` +
+      `Aktuell: ${fmt(pr.current, 'hPa')}<br>` +
+      `Folgetag: ${fmt(pr.tomorrow, 'hPa')} <span class="muted">(Vorhersage)</span></div>`;
+  }
+  if (c.errors && c.errors.weather) {
+    html += '<div class="cond muted">Wetter konnte nicht abgerufen werden.</div>';
+  }
+
+  if (c.waterLevel) {
+    const wl = c.waterLevel;
+    const trend = { '-1': ' ↘ fallend', '0': ' → gleichbleibend', '1': ' ↗ steigend' }[wl.trend] || '';
+    const state = { low: ' (niedrig)', normal: ' (normal)', high: ' (hoch)' }[wl.state] || '';
+    html += `<div class="cond"><b>Wasserstand:</b> ${fmt(wl.value, escapeHtml(wl.unit))}${trend}${state}<br>` +
+      `Pegel ${escapeHtml(wl.station)}${wl.water ? ` (${escapeHtml(wl.water)})` : ''}, ` +
+      `${fmt(wl.distanceKm, 'km')} entfernt` +
+      (wl.measuredAt ? `<br><span class="muted">gemessen ${new Date(wl.measuredAt).toLocaleString('de-DE')}</span>` : '') +
+      '</div>';
+  } else if (c.errors && c.errors.waterLevel) {
+    html += '<div class="cond muted">Wasserstand konnte nicht abgerufen werden.</div>';
+  } else if (c.waterLevel === null) {
+    html += `<div class="cond muted">Kein Pegel im Umkreis von ${PEGEL_RADIUS_KM} km gefunden.</div>`;
+  }
+  return html;
+}
+
+function canRetry(entry) {
+  const c = entry.conditions;
+  const incomplete = !c || (c.errors && Object.keys(c.errors).length > 0);
+  return incomplete && !loadingIds.has(entry.id) &&
+    Date.now() - new Date(entry.timestamp).getTime() < RETRY_WINDOW_MS;
+}
+
+function buildPopup(entry) {
+  const rating = RATINGS[entry.rating];
+  const popup = document.createElement('div');
+  popup.className = 'popup';
+  popup.innerHTML = `<strong>${rating.label}</strong><br>${new Date(entry.timestamp).toLocaleString('de-DE')}` +
+    conditionsHtml(entry);
+
+  const actions = document.createElement('div');
+  actions.className = 'popup-actions';
+
+  if (canRetry(entry)) {
+    const retry = document.createElement('button');
+    retry.className = 'popup-retry';
+    retry.textContent = 'Daten erneut abrufen';
+    retry.addEventListener('click', () => loadConditions(entry.id));
+    actions.appendChild(retry);
+  }
+
+  const del = document.createElement('button');
+  del.className = 'popup-delete';
+  del.textContent = 'Löschen';
+  del.addEventListener('click', async () => {
+    if (!confirm(`Bewertung „${rating.label}“ wirklich löschen?`)) return;
+    await deleteRating(entry.id);
+    renderRatings();
+    updateBackupInfo();
+  });
+  actions.appendChild(del);
+  popup.appendChild(actions);
+  return popup;
+}
+
+function refreshPopup(id) {
+  const marker = markersById.get(id);
+  const entry = ratings.find((r) => r.id === id);
+  if (marker && entry) marker.setPopupContent(buildPopup(entry));
+}
+
 function renderRatings() {
   ratingsLayer.clearLayers();
+  markersById.clear();
   for (const entry of ratings) {
     const rating = RATINGS[entry.rating];
     if (!rating) continue;
@@ -171,20 +292,27 @@ function renderRatings() {
       iconAnchor: [9, 9],
     });
 
-    const popup = document.createElement('div');
-    popup.innerHTML = `<strong>${rating.label}</strong><br>${new Date(entry.timestamp).toLocaleString('de-DE')}<br>`;
-    const del = document.createElement('button');
-    del.className = 'popup-delete';
-    del.textContent = 'Löschen';
-    del.addEventListener('click', async () => {
-      if (!confirm(`Bewertung „${rating.label}“ wirklich löschen?`)) return;
-      await deleteRating(entry.id);
-      renderRatings();
-      updateBackupInfo();
-    });
-    popup.appendChild(del);
+    const marker = L.marker([entry.lat, entry.lng], { icon })
+      .bindPopup(buildPopup(entry), { maxWidth: 280 })
+      .addTo(ratingsLayer);
+    markersById.set(entry.id, marker);
+  }
+}
 
-    L.marker([entry.lat, entry.lng], { icon }).bindPopup(popup).addTo(ratingsLayer);
+// Ruft Wetter und Wasserstand ab und hängt sie an die (bereits gespeicherte) Bewertung an.
+async function loadConditions(id) {
+  const entry = ratings.find((r) => r.id === id);
+  if (!entry || loadingIds.has(id)) return;
+  loadingIds.add(id);
+  refreshPopup(id);
+  try {
+    const conditions = await fetchConditions(entry.lat, entry.lng);
+    const current = ratings.find((r) => r.id === id);
+    if (current) await updateRating({ ...current, conditions });
+    return conditions;
+  } finally {
+    loadingIds.delete(id);
+    refreshPopup(id);
   }
 }
 
@@ -290,12 +418,19 @@ menu.addEventListener('click', async (e) => {
   closeMenu();
   try {
     await addRatings([entry]);
-    renderRatings();
-    updateBackupInfo();
-    showToast(`„${RATINGS[rating].label}“ für diesen Standort gespeichert`);
   } catch {
     showToast('Fehler: Bewertung konnte nicht gespeichert werden!');
+    return;
   }
+  renderRatings();
+  updateBackupInfo();
+  showToast(`„${RATINGS[rating].label}“ gespeichert – Wetter und Wasserstand werden abgerufen …`);
+
+  const conditions = await loadConditions(entry.id);
+  const failed = !conditions || Object.keys(conditions.errors).length > 0;
+  showToast(failed
+    ? 'Einige Daten konnten nicht abgerufen werden (Details im Punkt auf der Karte).'
+    : 'Wetter, Luftdruck und Wasserstand gespeichert');
 });
 
 // ---- Sicherung (Export / Import) ----

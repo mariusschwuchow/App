@@ -105,8 +105,22 @@ html, body {
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
 }
 
+.popup { font-size: 13px; line-height: 1.4; }
+.popup .cond { margin-top: 6px; }
+.popup .muted { color: #6e7781; }
+
+.popup-actions { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+
+.popup-retry {
+  border: none;
+  background: #1f6feb;
+  color: #fff;
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
 .popup-delete {
-  margin-top: 6px;
   border: none;
   background: #cf222e;
   color: #fff;
