@@ -6,8 +6,23 @@ Die Auswahl wird zusammen mit den Koordinaten und dem Zeitpunkt gespeichert und 
 Punkt auf der Karte angezeigt. Ein Tipp auf einen Punkt zeigt Details und erlaubt das Löschen.
 
 - Karte: [Leaflet](https://leafletjs.com/) mit OpenStreetMap-Kacheln
-- Speicherung: lokal im Browser (`localStorage`, Schlüssel `standort-bewertungen`)
+- Speicherung: lokal auf dem Gerät, doppelt in IndexedDB und `localStorage`
 - Kein Build-Schritt nötig – reine HTML/CSS/JS-Dateien
+
+## Datensicherheit
+
+- Jede Bewertung wird sofort beim Auswählen gespeichert, und zwar doppelt: in IndexedDB
+  und als Kopie in `localStorage`. Beim Start werden beide zusammengeführt. Wird einer der
+  Speicher geleert, stellt der andere die Daten wieder her.
+- Die App bittet den Browser um **dauerhaften Speicher** (`navigator.storage.persist()`),
+  damit er die Daten nicht automatisch aufräumt.
+- Über das Menü **☰ → „Sicherung herunterladen“** wird eine JSON-Datei mit allen
+  Bewertungen gespeichert. Mit **„Sicherung wiederherstellen“** wird sie wieder eingelesen
+  (nach dem Löschen der Browserdaten oder auf einem neuen Gerät). Doppelte Einträge werden
+  dabei übersprungen.
+- **iPhone:** Safari kann Website-Daten nach 7 Tagen ohne Nutzung löschen. Das gilt nicht,
+  wenn die App über „Zum Home-Bildschirm“ installiert wurde. Darum: installieren und ab und
+  zu eine Sicherung herunterladen.
 
 ## Starten
 

@@ -114,3 +114,56 @@ html, body {
   border-radius: 6px;
   cursor: pointer;
 }
+
+.backup-toggle {
+  position: fixed;
+  top: calc(12px + env(safe-area-inset-top));
+  left: 12px;
+  z-index: 1000;
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 10px;
+  background: #fff;
+  font-size: 22px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+}
+
+.backup-panel {
+  position: fixed;
+  top: calc(64px + env(safe-area-inset-top));
+  left: 12px;
+  right: 12px;
+  max-width: 360px;
+  z-index: 1001;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  font-size: 15px;
+}
+
+.backup-panel[hidden] { display: none; }
+.backup-panel h2 { margin: 0; font-size: 17px; }
+.backup-panel p { margin: 0 0 4px; color: #57606a; }
+
+.backup-panel button,
+.import-label {
+  display: block;
+  border: none;
+  border-radius: 10px;
+  padding: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  text-align: center;
+  background: #1f6feb;
+  color: #fff;
+  cursor: pointer;
+}
+
+.import-label { background: #eaeef2; color: #24292f; }
+.import-label input { display: none; }

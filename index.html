@@ -27,6 +27,19 @@
     <button class="cancel" data-cancel>Abbrechen</button>
   </div>
 
+  <button id="backup-toggle" class="backup-toggle" aria-expanded="false" aria-controls="backup-panel"
+          title="Daten sichern">&#9776;</button>
+
+  <div id="backup-panel" class="backup-panel" hidden>
+    <h2>Meine Daten</h2>
+    <p id="backup-info"></p>
+    <button id="export-button">Sicherung herunterladen</button>
+    <label class="import-label">
+      Sicherung wiederherstellen
+      <input id="import-input" type="file" accept="application/json,.json">
+    </label>
+  </div>
+
   <div id="toast" class="toast" hidden></div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
