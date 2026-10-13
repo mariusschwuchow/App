@@ -1,5 +1,11 @@
 const STORAGE_KEY = 'standort-bewertungen';
 
+const FISH = {
+  barsch: 'Barsch',
+  zander: 'Zander',
+  hecht: 'Hecht',
+};
+
 const RATINGS = {
   'sehr-gut': { label: 'Sehr gut', color: '#1a7f37' },
   'gut':      { label: 'Gut',      color: '#4caf50' },
@@ -22,6 +28,7 @@ const crosshair = document.getElementById('crosshair');
 const pickBar = document.getElementById('pick-bar');
 const visitDateField = document.getElementById('visit-date-field');
 const visitDateInput = document.getElementById('visit-date');
+const visitTimeInput = document.getElementById('visit-time');
 const menu = document.getElementById('rating-menu');
 const toast = document.getElementById('toast');
 
@@ -215,8 +222,9 @@ function conditionsHtml(entry) {
     const pr = c.pressure;
     html += `<div class="cond"><b>Luftdruck:</b><br>` +
       `Vortag: ${fmt(pr.yesterday, 'hPa')}<br>` +
-      `Aktuell: ${fmt(pr.current, 'hPa')}<br>` +
-      `Folgetag: ${fmt(pr.tomorrow, 'hPa')} <span class="muted">(Vorhersage)</span></div>`;
+      `${c.for ? 'Zum Zeitpunkt' : 'Aktuell'}: ${fmt(pr.current, 'hPa')}<br>` +
+      `Folgetag: ${fmt(pr.tomorrow, 'hPa')}` +
+      (pr.tomorrowIsForecast !== false ? ' <span class="muted">(Vorhersage)</span>' : '') + '</div>';
   }
   if (c.errors && c.errors.weather) {
     html += '<div class="cond muted">Wetter konnte nicht abgerufen werden.</div>';
@@ -233,67 +241,169 @@ function conditionsHtml(entry) {
       '</div>';
   } else if (c.errors && c.errors.waterLevel) {
     html += '<div class="cond muted">Wasserstand konnte nicht abgerufen werden.</div>';
+  } else if (c.waterLevelUnavailable) {
+    html += `<div class="cond muted">Wasserstand: Pegeldaten gibt es nur für die letzten ${PEGEL_HISTORY_DAYS} Tage.</div>`;
   } else if (c.waterLevel === null) {
     html += `<div class="cond muted">Kein Pegel im Umkreis von ${PEGEL_RADIUS_KM} km gefunden.</div>`;
   }
   return html;
 }
 
-function canRetry(entry) {
-  if (entry.manual) return false;
-  const c = entry.conditions;
-  const incomplete = !c || (c.errors && Object.keys(c.errors).length > 0);
-  return incomplete && !loadingIds.has(entry.id) &&
-    Date.now() - new Date(entry.timestamp).getTime() < RETRY_WINDOW_MS;
+// Zeitpunkt (Unix-Sekunden), für den Wetterdaten abgerufen werden:
+// bei manuellen Einträgen das Besuchsdatum (ohne Uhrzeit: 12 Uhr), sonst jetzt (null).
+function conditionsTarget(entry) {
+  if (!entry.manual) return null;
+  return Math.floor(new Date(`${entry.visitedAt}T${entry.visitedTime || '12:00'}:00`).getTime() / 1000);
 }
 
-function buildPopup(entry) {
-  const rating = RATINGS[entry.rating];
-  const popup = document.createElement('div');
-  popup.className = 'popup';
+function canRetry(entry) {
+  if (loadingIds.has(entry.id)) return false;
+  const c = entry.conditions;
+  const incomplete = !c || (c.errors && Object.keys(c.errors).length > 0);
+  if (!incomplete) return false;
+  if (entry.manual) return Boolean(entry.visitedAt);
+  return Date.now() - new Date(entry.timestamp).getTime() < RETRY_WINDOW_MS;
+}
+
+function getEntry(id) {
+  return ratings.find((r) => r.id === id);
+}
+
+// Teil des Popups, der sich durch Datenabrufe ändert (Mond, Wetter, Pegel).
+function renderPopupDetails(entry, container) {
   // Ältere Bewertungen ohne gespeicherte Mondphase: aus dem Zeitpunkt berechnen.
   // Manuelle Einträge haben nur dann eine Mondphase, wenn ein Datum angegeben wurde.
   const moon = entry.moon || (!entry.manual && typeof moonPhaseAt === 'function'
     ? moonPhaseAt(new Date(entry.timestamp)) : null);
-  const when = entry.manual
-    ? (entry.visitedAt
-      ? `Besucht am ${new Date(`${entry.visitedAt}T12:00:00`).toLocaleDateString('de-DE')}`
-      : 'Besuchsdatum unbekannt') + '<br><span class="muted">manuell eingetragen</span>'
-    : new Date(entry.timestamp).toLocaleString('de-DE');
-  popup.innerHTML = `<strong>${rating.label}</strong><br>${when}` +
-    (moon ? `<div class="cond"><b>Mond${entry.manual ? ' (Tagesmitte)' : ''}:</b> ${moon.symbol} ${moon.name}, ` +
+  const moonLabel = entry.manual && !entry.visitedTime ? 'Mond (Tagesmitte)' : 'Mond';
+  container.innerHTML =
+    (moon ? `<div class="cond"><b>${moonLabel}:</b> ${moon.symbol} ${moon.name}, ` +
       `${moon.illumination} % beleuchtet</div>` : '') +
-    (entry.manual ? '' : conditionsHtml(entry));
-
-  const actions = document.createElement('div');
-  actions.className = 'popup-actions';
+    (entry.manual && !entry.visitedAt
+      ? '<div class="cond muted">Ohne Besuchsdatum gibt es keine Wetterdaten.</div>'
+      : conditionsHtml(entry));
 
   if (canRetry(entry)) {
     const retry = document.createElement('button');
     retry.className = 'popup-retry';
-    retry.textContent = 'Daten erneut abrufen';
-    retry.addEventListener('click', () => loadConditions(entry.id));
-    actions.appendChild(retry);
+    retry.textContent = entry.conditions ? 'Daten erneut abrufen' : 'Wetterdaten abrufen';
+    retry.addEventListener('click', (e) => {
+      // Der Button wird beim Neuzeichnen ersetzt; ohne stopPropagation hielte Leaflet
+      // den Klick für einen Kartenklick und würde das Popup schließen.
+      L.DomEvent.stopPropagation(e);
+      loadConditions(entry.id);
+    });
+    container.appendChild(retry);
   }
+}
 
+function buildFishPicker(id) {
+  const wrap = document.createElement('div');
+  wrap.className = 'cond';
+  wrap.innerHTML = '<b>Gut gefangen:</b>';
+  const chips = document.createElement('div');
+  chips.className = 'fish-chips';
+  for (const [key, label] of Object.entries(FISH)) {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'fish-chip';
+    chip.textContent = label;
+    const selected = (getEntry(id).fish || []).includes(key);
+    chip.setAttribute('aria-pressed', String(selected));
+    chip.addEventListener('click', async () => {
+      const current = getEntry(id);
+      if (!current) return;
+      const fish = new Set(current.fish || []);
+      if (fish.has(key)) fish.delete(key); else fish.add(key);
+      chip.setAttribute('aria-pressed', String(fish.has(key)));
+      await updateRating({ ...getEntry(id), fish: Object.keys(FISH).filter((k) => fish.has(k)) });
+    });
+    chips.appendChild(chip);
+  }
+  wrap.appendChild(chips);
+  return wrap;
+}
+
+function buildNotesField(id) {
+  const wrap = document.createElement('label');
+  wrap.className = 'cond notes-field';
+  wrap.innerHTML = '<b>Notizen:</b>';
+  const textarea = document.createElement('textarea');
+  textarea.rows = 3;
+  textarea.placeholder = 'z. B. Köder, Tiefe, Uhrzeit, Besonderheiten …';
+  textarea.value = getEntry(id).notes || '';
+  const status = document.createElement('span');
+  status.className = 'muted notes-status';
+
+  let timer = null;
+  const save = async () => {
+    clearTimeout(timer);
+    timer = null;
+    const current = getEntry(id);
+    if (!current || (current.notes || '') === textarea.value) return;
+    await updateRating({ ...current, notes: textarea.value });
+    status.textContent = 'Gespeichert ✓';
+  };
+  textarea.addEventListener('input', () => {
+    status.textContent = '';
+    clearTimeout(timer);
+    timer = setTimeout(save, 600);
+  });
+  textarea.addEventListener('blur', save);
+
+  wrap.append(textarea, status);
+  return wrap;
+}
+
+function buildPopup(entry) {
+  const id = entry.id;
+  const rating = RATINGS[entry.rating];
+  const popup = document.createElement('div');
+  popup.className = 'popup';
+
+  const header = document.createElement('div');
+  const when = entry.manual
+    ? (entry.visitedAt
+      ? `Besucht am ${new Date(`${entry.visitedAt}T12:00:00`).toLocaleDateString('de-DE')}` +
+        (entry.visitedTime ? `, ${entry.visitedTime} Uhr` : '')
+      : 'Besuchsdatum unbekannt') + '<br><span class="muted">manuell eingetragen</span>'
+    : new Date(entry.timestamp).toLocaleString('de-DE');
+  header.innerHTML = `<strong>${rating.label}</strong><br>${when}`;
+
+  const details = document.createElement('div');
+  details.className = 'popup-details';
+  renderPopupDetails(entry, details);
+
+  const actions = document.createElement('div');
+  actions.className = 'popup-actions';
   const del = document.createElement('button');
   del.className = 'popup-delete';
   del.textContent = 'Löschen';
   del.addEventListener('click', async () => {
     if (!confirm(`Bewertung „${rating.label}“ wirklich löschen?`)) return;
-    await deleteRating(entry.id);
+    await deleteRating(id);
     renderRatings();
     updateBackupInfo();
   });
   actions.appendChild(del);
-  popup.appendChild(actions);
+
+  popup.append(header, details, buildFishPicker(id), buildNotesField(id), actions);
   return popup;
 }
 
+// Aktualisiert nur den Datenteil, damit Eingaben im Notizfeld erhalten bleiben.
 function refreshPopup(id) {
   const marker = markersById.get(id);
-  const entry = ratings.find((r) => r.id === id);
-  if (marker && entry) marker.setPopupContent(buildPopup(entry));
+  const entry = getEntry(id);
+  if (!marker || !entry) return;
+  const content = marker.getPopup() && marker.getPopup().getContent();
+  const details = content instanceof HTMLElement && content.querySelector('.popup-details');
+  if (details) {
+    renderPopupDetails(entry, details);
+    marker.getPopup().update();
+  } else {
+    marker.setPopupContent(buildPopup(entry));
+  }
 }
 
 function renderRatings() {
@@ -324,8 +434,8 @@ async function loadConditions(id) {
   loadingIds.add(id);
   refreshPopup(id);
   try {
-    const conditions = await fetchConditions(entry.lat, entry.lng);
-    const current = ratings.find((r) => r.id === id);
+    const conditions = await fetchConditions(entry.lat, entry.lng, conditionsTarget(entry));
+    const current = getEntry(id);
     if (current) await updateRating({ ...current, conditions });
     return conditions;
   } finally {
@@ -404,6 +514,7 @@ function openMenu(mode) {
   visitDateField.hidden = mode !== 'manual';
   if (mode === 'manual') {
     visitDateInput.value = '';
+    visitTimeInput.value = '';
     visitDateInput.max = localDateString(new Date());
   }
   menu.hidden = false;
@@ -458,6 +569,7 @@ rateButton.addEventListener('click', () => openMenu('current'));
 async function saveManualRating(rating) {
   const now = new Date();
   const visitedAt = visitDateInput.value || null; // JJJJ-MM-TT
+  const visitedTime = (visitedAt && visitTimeInput.value) || null; // HH:MM
   const entry = {
     id: now.getTime().toString(36) + Math.random().toString(36).slice(2, 7),
     lat: pickedLatLng.lat,
@@ -467,8 +579,9 @@ async function saveManualRating(rating) {
     timestamp: now.toISOString(),
     manual: true,
     visitedAt,
+    visitedTime,
     moon: visitedAt && typeof moonPhaseAt === 'function'
-      ? moonPhaseAt(new Date(`${visitedAt}T12:00:00`)) : null,
+      ? moonPhaseAt(new Date(`${visitedAt}T${visitedTime || '12:00'}:00`)) : null,
   };
 
   closeMenu();
@@ -480,7 +593,18 @@ async function saveManualRating(rating) {
   }
   renderRatings();
   updateBackupInfo();
-  showToast(`„${RATINGS[rating].label}“ für den gewählten Ort gespeichert`);
+  if (!visitedAt) {
+    showToast(`„${RATINGS[rating].label}“ für den gewählten Ort gespeichert`);
+    return;
+  }
+
+  showToast(`„${RATINGS[rating].label}“ gespeichert – Wetterdaten vom ${
+    new Date(`${visitedAt}T12:00:00`).toLocaleDateString('de-DE')} werden abgerufen …`);
+  const conditions = await loadConditions(entry.id);
+  const failed = !conditions || Object.keys(conditions.errors).length > 0;
+  showToast(failed
+    ? 'Einige Daten konnten nicht abgerufen werden (Details im Punkt auf der Karte).'
+    : 'Wetterdaten für den Besuchstag gespeichert');
 }
 
 async function saveCurrentRating(rating) {

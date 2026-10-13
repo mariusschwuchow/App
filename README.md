@@ -16,9 +16,23 @@ die Karte verschieben (oder auf den Ort tippen), bis das rote Kreuz auf dem Ort 
 **„Hier markieren“** antippen. Danach Bewertung und optional das Besuchsdatum wählen.
 
 Manuell eingetragene Orte haben auf der Karte einen dunklen Rand. Wurde ein Datum
-angegeben, wird die Mondphase dieses Tages (Tagesmitte) gespeichert. Wetter und
-Wasserstand werden für manuelle Orte nicht abgerufen, weil die aktuellen Werte nicht zum
-damaligen Besuch passen würden.
+angegeben (optional mit Uhrzeit, sonst gilt 12 Uhr), werden für diesen Zeitpunkt
+gespeichert:
+
+- Mondphase
+- Wetter und Luftdruck (Vortag, Zeitpunkt, Folgetag) – aus Open-Meteo, für ältere Daten
+  aus dem Open-Meteo-Archiv
+- Wasserstand am nächsten Pegel – nur wenn der Besuch höchstens 30 Tage zurückliegt,
+  weil PEGELONLINE ältere Messwerte nicht bereitstellt
+
+Ältere manuelle Einträge mit Datum lassen sich im Punkt über „Wetterdaten abrufen“
+nachträglich ergänzen.
+
+## Fischarten und Notizen
+
+Im Punkt auf der Karte kann man ankreuzen, welche Fischart dort gut lief (**Barsch**,
+**Zander**, **Hecht**, auch mehrere) und **Notizen** eintragen. Beides wird sofort
+gespeichert und ist in der Sicherungsdatei enthalten.
 
 ## Wetter, Luftdruck und Wasserstand
 

@@ -7,6 +7,17 @@
 
 const PEGEL_RADIUS_KM = 25;
 const FETCH_TIMEOUT_MS = 15000;
+const DAY_S = 86400;
+// Die Vorhersage-API liefert Werte bis ca. 92 Tage zurück, ältere kommen aus dem Archiv.
+const FORECAST_API_MAX_PAST_DAYS = 85;
+// PEGELONLINE speichert Messwerte nur etwa 30 Tage.
+const PEGEL_HISTORY_DAYS = 30;
+
+const HOURLY_WEATHER_VARS = [
+  'temperature_2m', 'apparent_temperature', 'relative_humidity_2m', 'weather_code',
+  'cloud_cover', 'precipitation', 'wind_speed_10m', 'wind_direction_10m',
+  'wind_gusts_10m', 'pressure_msl',
+];
 
 const WEATHER_CODES = {
   0: 'Klar',
@@ -118,7 +129,80 @@ async function fetchWeather(lat, lng) {
       current: round(c.pressure_msl) ?? pressureAt(now),
       yesterday: pressureAt(now - 86400),
       tomorrow: pressureAt(now + 86400),
+      tomorrowIsForecast: true,
       source: 'Open-Meteo',
+    },
+  };
+}
+
+function utcDateString(unixSeconds) {
+  return new Date(unixSeconds * 1000).toISOString().slice(0, 10);
+}
+
+// Wetter zu einem vergangenen Zeitpunkt (Unix-Sekunden) sowie Luftdruck 24 Stunden
+// davor und danach. Werte stammen aus stündlichen Modell- bzw. Reanalysedaten.
+async function fetchHistoricalWeather(lat, lng, target) {
+  const now = Math.floor(Date.now() / 1000);
+  const recent = target >= now - FORECAST_API_MAX_PAST_DAYS * DAY_S;
+  const params = new URLSearchParams({
+    latitude: lat.toFixed(4),
+    longitude: lng.toFixed(4),
+    hourly: HOURLY_WEATHER_VARS.join(','),
+    start_date: utcDateString(target - 2 * DAY_S),
+    end_date: utcDateString(target + 2 * DAY_S),
+    wind_speed_unit: 'kmh',
+    timeformat: 'unixtime',
+    timezone: 'GMT',
+  });
+  const base = recent
+    ? 'https://api.open-meteo.com/v1/forecast'
+    : 'https://archive-api.open-meteo.com/v1/archive';
+  const data = await fetchJson(`${base}?${params}`);
+  const h = data.hourly || {};
+  const times = h.time || [];
+
+  const indexAt = (t, key) => {
+    let best = -1;
+    let bestDiff = Infinity;
+    times.forEach((time, i) => {
+      const diff = Math.abs(time - t);
+      if (diff < bestDiff && Number.isFinite((h[key] || [])[i])) {
+        best = i;
+        bestDiff = diff;
+      }
+    });
+    return best >= 0 && bestDiff <= 3600 ? best : -1;
+  };
+  const valueAt = (t, key, digits = 1) => {
+    const i = indexAt(t, key);
+    return i >= 0 ? round(h[key][i], digits) : null;
+  };
+
+  const code = valueAt(target, 'weather_code', 0);
+  if (code === null && valueAt(target, 'temperature_2m') === null) {
+    throw new Error('Keine Wetterdaten für diesen Zeitpunkt');
+  }
+  return {
+    weather: {
+      description: code === null ? 'Unbekannt' : weatherDescription(code),
+      weatherCode: code,
+      temperature: valueAt(target, 'temperature_2m'),
+      apparentTemperature: valueAt(target, 'apparent_temperature'),
+      humidity: valueAt(target, 'relative_humidity_2m', 0),
+      cloudCover: valueAt(target, 'cloud_cover', 0),
+      precipitation: valueAt(target, 'precipitation'),
+      windSpeed: valueAt(target, 'wind_speed_10m'),
+      windGusts: valueAt(target, 'wind_gusts_10m'),
+      windDirection: valueAt(target, 'wind_direction_10m', 0),
+      source: recent ? 'Open-Meteo' : 'Open-Meteo (Archiv)',
+    },
+    pressure: {
+      unit: 'hPa',
+      current: valueAt(target, 'pressure_msl'),
+      yesterday: valueAt(target - DAY_S, 'pressure_msl'),
+      tomorrow: valueAt(target + DAY_S, 'pressure_msl'),
+      tomorrowIsForecast: target + DAY_S > now,
+      source: recent ? 'Open-Meteo' : 'Open-Meteo (Archiv)',
     },
   };
 }
@@ -132,15 +216,15 @@ function distanceKm(lat1, lng1, lat2, lng2) {
   return 6371 * 2 * Math.asin(Math.sqrt(a));
 }
 
-// Wasserstand am nächstgelegenen Pegel (innerhalb von PEGEL_RADIUS_KM).
-async function fetchWaterLevel(lat, lng) {
+// Nächstgelegener Pegel mit Wasserstandsmessung (innerhalb von PEGEL_RADIUS_KM).
+async function findNearestGauge(lat, lng, withCurrent) {
   const params = new URLSearchParams({
     latitude: lat.toFixed(4),
     longitude: lng.toFixed(4),
     radius: String(PEGEL_RADIUS_KM),
     timeseries: 'W',
     includeTimeseries: 'true',
-    includeCurrentMeasurement: 'true',
+    includeCurrentMeasurement: String(withCurrent),
   });
   const stations = await fetchJson(
     `https://www.pegelonline.wsv.de/webservices/rest-api/v2/stations.json?${params}`);
@@ -148,37 +232,81 @@ async function fetchWaterLevel(lat, lng) {
   let nearest = null;
   for (const s of stations || []) {
     if (!Number.isFinite(s.latitude) || !Number.isFinite(s.longitude)) continue;
-    const ts = (s.timeseries || []).find((t) => t.shortname === 'W' && t.currentMeasurement);
+    const ts = (s.timeseries || []).find((t) => t.shortname === 'W' && (!withCurrent || t.currentMeasurement));
     if (!ts) continue;
     const dist = distanceKm(lat, lng, s.latitude, s.longitude);
     if (dist > PEGEL_RADIUS_KM) continue;
     if (!nearest || dist < nearest.dist) nearest = { station: s, ts, dist };
   }
-  if (!nearest) return null;
+  return nearest;
+}
 
-  const { station, ts, dist } = nearest;
-  const m = ts.currentMeasurement;
+function gaugeInfo({ station, ts, dist }) {
   return {
     station: station.longname || station.shortname || station.number,
     water: (station.water && (station.water.longname || station.water.shortname)) || null,
     distanceKm: round(dist),
-    value: m.value,
     unit: ts.unit || 'cm',
-    measuredAt: m.timestamp || null,
-    trend: Number.isFinite(m.trend) ? m.trend : null,
-    state: m.stateMnwMhw || null,
     source: 'PEGELONLINE (WSV)',
   };
 }
 
-// Ruft alle Daten parallel ab. Teilfehler werden pro Bereich vermerkt, damit z. B. das
+// Aktueller Wasserstand am nächstgelegenen Pegel.
+async function fetchWaterLevel(lat, lng) {
+  const nearest = await findNearestGauge(lat, lng, true);
+  if (!nearest) return null;
+  const m = nearest.ts.currentMeasurement;
+  return {
+    ...gaugeInfo(nearest),
+    value: m.value,
+    measuredAt: m.timestamp || null,
+    trend: Number.isFinite(m.trend) ? m.trend : null,
+    state: m.stateMnwMhw || null,
+  };
+}
+
+// Wasserstand zu einem vergangenen Zeitpunkt (Unix-Sekunden), nur ca. 30 Tage zurück.
+async function fetchHistoricalWaterLevel(lat, lng, target) {
+  const nearest = await findNearestGauge(lat, lng, false);
+  if (!nearest) return null;
+  const uuid = nearest.station.uuid;
+  const params = new URLSearchParams({
+    start: new Date((target - 3 * 3600) * 1000).toISOString(),
+    end: new Date((target + 3 * 3600) * 1000).toISOString(),
+  });
+  const measurements = await fetchJson(
+    `https://www.pegelonline.wsv.de/webservices/rest-api/v2/stations/${encodeURIComponent(uuid)}/W/measurements.json?${params}`);
+
+  let best = null;
+  for (const m of measurements || []) {
+    const t = Date.parse(m.timestamp) / 1000;
+    if (!Number.isFinite(t) || !Number.isFinite(m.value)) continue;
+    if (!best || Math.abs(t - target) < Math.abs(best.t - target)) best = { t, m };
+  }
+  if (!best) throw new Error('Keine Messwerte für diesen Zeitpunkt');
+  return {
+    ...gaugeInfo(nearest),
+    value: best.m.value,
+    measuredAt: best.m.timestamp,
+    trend: null,
+    state: null,
+  };
+}
+
+// Ruft alle Daten parallel ab – für jetzt (target = null) oder einen vergangenen
+// Zeitpunkt (Unix-Sekunden). Teilfehler werden pro Bereich vermerkt, damit z. B. das
 // Wetter auch dann gespeichert wird, wenn der Pegel nicht erreichbar ist.
-async function fetchConditions(lat, lng) {
+async function fetchConditions(lat, lng, target = null) {
+  const now = Math.floor(Date.now() / 1000);
+  const waterTooOld = target !== null && target < now - PEGEL_HISTORY_DAYS * DAY_S;
+
   const [weather, water] = await Promise.allSettled([
-    fetchWeather(lat, lng),
-    fetchWaterLevel(lat, lng),
+    target === null ? fetchWeather(lat, lng) : fetchHistoricalWeather(lat, lng, target),
+    target === null ? fetchWaterLevel(lat, lng)
+      : waterTooOld ? Promise.resolve(undefined) : fetchHistoricalWaterLevel(lat, lng, target),
   ]);
   const result = { fetchedAt: new Date().toISOString(), errors: {} };
+  if (target !== null) result.for = new Date(target * 1000).toISOString();
 
   if (weather.status === 'fulfilled') {
     result.weather = weather.value.weather;
@@ -187,7 +315,9 @@ async function fetchConditions(lat, lng) {
     result.errors.weather = String(weather.reason && weather.reason.message || weather.reason);
   }
 
-  if (water.status === 'fulfilled') {
+  if (waterTooOld) {
+    result.waterLevelUnavailable = true; // zu weit zurück für PEGELONLINE
+  } else if (water.status === 'fulfilled') {
     result.waterLevel = water.value; // null = kein Pegel in der Nähe
   } else {
     result.errors.waterLevel = String(water.reason && water.reason.message || water.reason);
