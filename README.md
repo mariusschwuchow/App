@@ -43,6 +43,29 @@ hat eigene Bewertung, Wetter- und Pegeldaten, Mondphase, Fischarten und Notizen.
   Beispiel: Schlecht + Mittel + Gut = Mittel. Die Farbe des Punkts zeigt die
   Gesamtbewertung, die Zahl darin die Anzahl der Besuche.
 
+## Spot-Analyse („Wohin heute?“)
+
+Im Menü **☰ → „Spot-Analyse: Wohin heute?“** zeigt die App für **heute, morgen und
+übermorgen**, welche Spots sich laut Wettervorhersage lohnen.
+
+So wird gerechnet:
+
+1. Für jeden Spot wird die Vorhersage (Open-Meteo) geladen, und zwar für die **Uhrzeit**
+   jedes früheren Besuchs (z. B. ein Besuch um 7 Uhr wird mit der Vorhersage für 7 Uhr
+   verglichen).
+2. Jeder Besuch mit gespeicherten Wetterdaten wird mit der Vorhersage verglichen:
+   Druckverlauf über 24 h (Gewicht 2), Luftdruck und Temperatur (je 1,5), Wind,
+   Bewölkung, Niederschlag, Mondphase (je 1) und Windrichtung (0,5). Pro Merkmal gibt es
+   eine Toleranz (z. B. 10 hPa, 6 °C), innerhalb derer die Ähnlichkeit von 100 % auf 0 %
+   fällt.
+3. Die **Erwartung** ist der Durchschnitt der Bewertungen, wobei ähnliche Besuche viel
+   stärker zählen. Die **Empfehlung** (0–100) ist diese Erwartung, abgeschwächt, wenn kein
+   früherer Besuch wirklich ähnlich war.
+
+Mit dem Fischfilter (Barsch, Zander, Hecht) werden nur Spots gezeigt, an denen diese Art
+schon gut lief. Spots ohne Besuche mit Wetterdaten fehlen in der Analyse. Der Wasserstand
+fließt nicht ein, weil es dafür keine Vorhersage gibt.
+
 ## Fischarten und Notizen
 
 Bei jedem Besuch kann man ankreuzen, welche Fischart dort gut lief (**Barsch**,

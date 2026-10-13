@@ -47,9 +47,10 @@
   </div>
 
   <button id="backup-toggle" class="backup-toggle" aria-expanded="false" aria-controls="backup-panel"
-          title="Daten sichern">&#9776;</button>
+          title="Menü">&#9776;</button>
 
   <div id="backup-panel" class="backup-panel" hidden>
+    <button id="analysis-open" class="analysis-open">Spot-Analyse: Wohin heute?</button>
     <h2>Meine Daten</h2>
     <p id="backup-info"></p>
     <button id="export-button">Sicherung herunterladen</button>
@@ -59,6 +60,18 @@
     </label>
   </div>
 
+  <section id="analysis" class="analysis" hidden aria-label="Spot-Analyse">
+    <header class="analysis-header">
+      <h2>Spot-Analyse</h2>
+      <button id="analysis-close" class="analysis-close" aria-label="Schließen">&times;</button>
+    </header>
+    <p class="analysis-intro">Spots, an denen es bei ähnlichem Wetter wie in der Vorhersage gut lief.
+      Verglichen wird jeweils zur Uhrzeit deiner früheren Besuche.</p>
+    <div id="analysis-days" class="analysis-days"></div>
+    <div id="analysis-fish" class="fish-chips analysis-fish"></div>
+    <div id="analysis-list" class="analysis-list"></div>
+  </section>
+
   <div id="toast" class="toast" hidden></div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
@@ -66,5 +79,6 @@
   <script src="moon.js"></script>
   <script src="conditions.js"></script>
   <script src="app.js"></script>
+  <script src="analysis.js"></script>
 </body>
 </html>
