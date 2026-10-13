@@ -1,0 +1,116 @@
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+#map {
+  position: fixed;
+  inset: 0;
+}
+
+.status {
+  position: fixed;
+  top: calc(12px + env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  background: rgba(255, 255, 255, 0.95);
+  padding: 8px 14px;
+  border-radius: 999px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  font-size: 14px;
+  max-width: calc(100% - 32px);
+  text-align: center;
+}
+
+.status.error { background: #ffe5e5; color: #a40000; }
+
+.rate-button {
+  position: fixed;
+  bottom: calc(24px + env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  border: none;
+  border-radius: 999px;
+  padding: 16px 28px;
+  font-size: 18px;
+  font-weight: 600;
+  color: #fff;
+  background: #1f6feb;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+}
+
+.rate-button:disabled { background: #8a8f98; cursor: not-allowed; }
+
+.rating-menu {
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  bottom: calc(24px + env(safe-area-inset-bottom));
+  z-index: 1001;
+  max-width: 420px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+.rating-menu[hidden] { display: none; }
+
+.rating-menu button {
+  border: none;
+  border-radius: 10px;
+  padding: 14px;
+  font-size: 17px;
+  font-weight: 600;
+  color: #fff;
+  cursor: pointer;
+}
+
+.rating-menu [data-rating="sehr-gut"] { background: #1a7f37; }
+.rating-menu [data-rating="gut"]      { background: #4caf50; }
+.rating-menu [data-rating="mittel"]   { background: #d29922; }
+.rating-menu [data-rating="schlecht"] { background: #cf222e; }
+.rating-menu .cancel { background: #eaeef2; color: #24292f; }
+
+.toast {
+  position: fixed;
+  bottom: calc(96px + env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1002;
+  background: #24292f;
+  color: #fff;
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 15px;
+}
+
+.toast[hidden] { display: none; }
+
+.rating-dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+}
+
+.popup-delete {
+  margin-top: 6px;
+  border: none;
+  background: #cf222e;
+  color: #fff;
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
