@@ -184,9 +184,14 @@ async function requestPersistentStorage() {
 
 const ratingsLayer = L.layerGroup().addTo(map);
 
-const markersById = new Map();
+const markersBySpot = new Map();
 const RETRY_WINDOW_MS = 3 * 60 * 60 * 1000;
+const SAME_SPOT_RADIUS_M = 50;
 const loadingIds = new Set();
+
+// Gesamtbewertung: Durchschnitt der Besuche (Schlecht = 1 … Sehr gut = 4), gerundet.
+const SCORES = { 'schlecht': 1, 'mittel': 2, 'gut': 3, 'sehr-gut': 4 };
+const RATING_BY_SCORE = { 1: 'schlecht', 2: 'mittel', 3: 'gut', 4: 'sehr-gut' };
 
 function escapeHtml(text) {
   return String(text).replace(/[&<>"']/g, (c) => ({
@@ -269,6 +274,59 @@ function getEntry(id) {
   return ratings.find((r) => r.id === id);
 }
 
+// ---- Spots: mehrere Besuche am selben Ort ----
+
+function spotKey(entry) {
+  return entry.spotId || entry.id;
+}
+
+// Zeitpunkt des Besuchs in ms (null = Datum unbekannt).
+function visitTime(entry) {
+  if (!entry.manual) return new Date(entry.timestamp).getTime();
+  if (!entry.visitedAt) return null;
+  return new Date(`${entry.visitedAt}T${entry.visitedTime || '12:00'}:00`).getTime();
+}
+
+function visitDateLabel(entry, withTime = true) {
+  if (!entry.manual) {
+    return withTime ? new Date(entry.timestamp).toLocaleString('de-DE', {
+      day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+    }) + ' Uhr' : new Date(entry.timestamp).toLocaleDateString('de-DE');
+  }
+  if (!entry.visitedAt) return 'Datum unbekannt';
+  const date = new Date(`${entry.visitedAt}T12:00:00`).toLocaleDateString('de-DE', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+  });
+  return withTime && entry.visitedTime ? `${date}, ${entry.visitedTime} Uhr` : date;
+}
+
+// Besuche eines Spots, neueste zuerst; Besuche ohne Datum am Ende.
+function spotVisits(key) {
+  return ratings
+    .filter((r) => spotKey(r) === key && RATINGS[r.rating])
+    .sort((a, b) => (visitTime(b) ?? -Infinity) - (visitTime(a) ?? -Infinity));
+}
+
+function allSpotKeys() {
+  return [...new Set(ratings.filter((r) => RATINGS[r.rating]).map(spotKey))];
+}
+
+function overallRating(visits) {
+  const avg = visits.reduce((sum, v) => sum + SCORES[v.rating], 0) / visits.length;
+  return RATING_BY_SCORE[Math.min(4, Math.max(1, Math.round(avg)))];
+}
+
+// Nächster gespeicherter Spot innerhalb von SAME_SPOT_RADIUS_M Metern.
+function nearbySpot(lat, lng) {
+  let best = null;
+  for (const key of allSpotKeys()) {
+    const v = spotVisits(key)[0];
+    const meters = distanceKm(lat, lng, v.lat, v.lng) * 1000;
+    if (meters <= SAME_SPOT_RADIUS_M && (!best || meters < best.meters)) best = { key, meters, lat: v.lat, lng: v.lng };
+  }
+  return best;
+}
+
 // Teil des Popups, der sich durch Datenabrufe ändert (Mond, Wetter, Pegel).
 function renderPopupDetails(entry, container) {
   // Ältere Bewertungen ohne gespeicherte Mondphase: aus dem Zeitpunkt berechnen.
@@ -317,6 +375,7 @@ function buildFishPicker(id) {
       if (fish.has(key)) fish.delete(key); else fish.add(key);
       chip.setAttribute('aria-pressed', String(fish.has(key)));
       await updateRating({ ...getEntry(id), fish: Object.keys(FISH).filter((k) => fish.has(k)) });
+      refreshSpotSummary(spotKey(getEntry(id)));
     });
     chips.appendChild(chip);
   }
@@ -355,20 +414,57 @@ function buildNotesField(id) {
   return wrap;
 }
 
-function buildPopup(entry) {
+function fishSummary(visits) {
+  const counts = {};
+  for (const v of visits) for (const f of v.fish || []) counts[f] = (counts[f] || 0) + 1;
+  return Object.keys(FISH).filter((f) => counts[f])
+    .map((f) => (visits.length > 1 ? `${FISH[f]} ${counts[f]}×` : FISH[f])).join(', ');
+}
+
+function ratingBadge(key) {
+  return `<span class="rating-badge" style="background:${RATINGS[key].color}">${RATINGS[key].label}</span>`;
+}
+
+function spotHeaderHtml(key) {
+  const visits = spotVisits(key);
+  const overall = overallRating(visits);
+  let html = visits.length > 1
+    ? `<div class="spot-title">Gesamt: ${ratingBadge(overall)}</div>` +
+      `<div class="muted">${visits.length} Besuche: ` +
+      Object.keys(SCORES).reverse()
+        .map((r) => [r, visits.filter((v) => v.rating === r).length])
+        .filter(([, n]) => n).map(([r, n]) => `${n}× ${RATINGS[r].label}`).join(', ') + '</div>'
+    : `<div class="spot-title">${ratingBadge(overall)}</div><div class="muted">1 Besuch</div>`;
+  const fish = fishSummary(visits);
+  if (fish) html += `<div class="cond"><b>Gut gefangen:</b> ${fish}</div>`;
+  return html;
+}
+
+function visitTitleHtml(entry) {
+  const fish = (entry.fish || []).map((f) => FISH[f]).join(', ');
+  return `<span class="visit-date">${escapeHtml(visitDateLabel(entry, false))}</span> ${ratingBadge(entry.rating)}` +
+    (fish ? ` <span class="muted">${fish}</span>` : '');
+}
+
+function buildVisit(entry, open) {
   const id = entry.id;
   const rating = RATINGS[entry.rating];
-  const popup = document.createElement('div');
-  popup.className = 'popup';
+  const visit = document.createElement('details');
+  visit.className = 'visit';
+  visit.dataset.visit = id;
+  visit.open = open;
 
-  const header = document.createElement('div');
-  const when = entry.manual
-    ? (entry.visitedAt
-      ? `Besucht am ${new Date(`${entry.visitedAt}T12:00:00`).toLocaleDateString('de-DE')}` +
-        (entry.visitedTime ? `, ${entry.visitedTime} Uhr` : '')
-      : 'Besuchsdatum unbekannt') + '<br><span class="muted">manuell eingetragen</span>'
-    : new Date(entry.timestamp).toLocaleString('de-DE');
-  header.innerHTML = `<strong>${rating.label}</strong><br>${when}`;
+  const summary = document.createElement('summary');
+  summary.innerHTML = `<span class="visit-title">${visitTitleHtml(entry)}</span>`;
+  // Auf- und Zuklappen ändert die Höhe: Popup neu ausrichten.
+  visit.addEventListener('toggle', () => {
+    const marker = markersBySpot.get(spotKey(entry));
+    if (marker && marker.isPopupOpen()) marker.getPopup().update();
+  });
+
+  const when = document.createElement('div');
+  when.className = 'muted';
+  when.textContent = visitDateLabel(entry) + (entry.manual ? ' · manuell eingetragen' : '');
 
   const details = document.createElement('div');
   details.className = 'popup-details';
@@ -378,52 +474,129 @@ function buildPopup(entry) {
   actions.className = 'popup-actions';
   const del = document.createElement('button');
   del.className = 'popup-delete';
-  del.textContent = 'Löschen';
-  del.addEventListener('click', async () => {
-    if (!confirm(`Bewertung „${rating.label}“ wirklich löschen?`)) return;
+  del.textContent = 'Besuch löschen';
+  del.addEventListener('click', async (e) => {
+    L.DomEvent.stopPropagation(e);
+    if (!confirm(`Besuch vom ${visitDateLabel(entry, false)} („${rating.label}“) wirklich löschen?`)) return;
+    const key = spotKey(entry);
     await deleteRating(id);
     renderRatings();
     updateBackupInfo();
+    openSpot(key);
   });
   actions.appendChild(del);
 
-  popup.append(header, details, buildFishPicker(id), buildNotesField(id), actions);
+  visit.append(summary, when, details, buildFishPicker(id), buildNotesField(id), actions);
+  return visit;
+}
+
+function buildSpotPopup(key, expandId) {
+  const visits = spotVisits(key);
+  const popup = document.createElement('div');
+  popup.className = 'popup';
+  popup.dataset.spot = key;
+
+  const header = document.createElement('div');
+  header.className = 'spot-header';
+  header.innerHTML = spotHeaderHtml(key);
+
+  const add = document.createElement('button');
+  add.className = 'popup-add';
+  add.textContent = '+ Besuch hinzufügen';
+  add.addEventListener('click', (e) => {
+    L.DomEvent.stopPropagation(e);
+    targetSpot = key;
+    map.closePopup();
+    openMenu('visit');
+  });
+
+  const list = document.createElement('div');
+  list.className = 'visit-list';
+  for (const v of visits) {
+    list.appendChild(buildVisit(v, visits.length === 1 || v.id === expandId));
+  }
+
+  popup.append(header, add, list);
+
+  if (visits.length > 1) {
+    const delSpot = document.createElement('button');
+    delSpot.className = 'popup-delete spot-delete';
+    delSpot.textContent = 'Ganzen Spot löschen';
+    delSpot.addEventListener('click', async (e) => {
+      L.DomEvent.stopPropagation(e);
+      if (!confirm(`Diesen Spot mit allen ${visits.length} Besuchen wirklich löschen?`)) return;
+      for (const v of spotVisits(key)) await deleteRating(v.id);
+      renderRatings();
+      updateBackupInfo();
+    });
+    popup.appendChild(delSpot);
+  }
   return popup;
 }
 
-// Aktualisiert nur den Datenteil, damit Eingaben im Notizfeld erhalten bleiben.
-function refreshPopup(id) {
-  const marker = markersById.get(id);
-  const entry = getEntry(id);
-  if (!marker || !entry) return;
-  const content = marker.getPopup() && marker.getPopup().getContent();
-  const details = content instanceof HTMLElement && content.querySelector('.popup-details');
-  if (details) {
-    renderPopupDetails(entry, details);
-    marker.getPopup().update();
-  } else {
-    marker.setPopupContent(buildPopup(entry));
+function popupContent(key) {
+  const marker = markersBySpot.get(key);
+  const content = marker && marker.getPopup() && marker.getPopup().getContent();
+  return content instanceof HTMLElement ? content : null;
+}
+
+// Aktualisiert Kopf und Besuchs-Überschriften (z. B. nach Änderung der Fischarten).
+function refreshSpotSummary(key) {
+  const content = popupContent(key);
+  if (!content) return;
+  content.querySelector('.spot-header').innerHTML = spotHeaderHtml(key);
+  for (const v of spotVisits(key)) {
+    const title = content.querySelector(`[data-visit="${v.id}"] .visit-title`);
+    if (title) title.innerHTML = visitTitleHtml(v);
   }
+}
+
+// Aktualisiert nur den Datenteil eines Besuchs, damit Eingaben im Notizfeld erhalten bleiben.
+function refreshPopup(id) {
+  const entry = getEntry(id);
+  if (!entry) return;
+  const content = popupContent(spotKey(entry));
+  const details = content && content.querySelector(`[data-visit="${id}"] .popup-details`);
+  if (!details) return;
+  renderPopupDetails(entry, details);
+  markersBySpot.get(spotKey(entry)).getPopup().update();
+}
+
+function openSpot(key, expandId) {
+  const marker = markersBySpot.get(key);
+  if (!marker) return;
+  if (expandId) marker.setPopupContent(buildSpotPopup(key, expandId));
+  marker.openPopup();
 }
 
 function renderRatings() {
   ratingsLayer.clearLayers();
-  markersById.clear();
-  for (const entry of ratings) {
-    const rating = RATINGS[entry.rating];
-    if (!rating) continue;
+  markersBySpot.clear();
+  for (const key of allSpotKeys()) {
+    const visits = spotVisits(key);
+    const overall = RATINGS[overallRating(visits)];
+    const allManual = visits.every((v) => v.manual);
+    const count = visits.length > 1 ? visits.length : '';
+    const size = count ? 24 : 18;
 
     const icon = L.divIcon({
       className: '',
-      html: `<div class="rating-dot${entry.manual ? ' manual' : ''}" style="background:${rating.color}"></div>`,
-      iconSize: [18, 18],
-      iconAnchor: [9, 9],
+      html: `<div class="rating-dot${allManual ? ' manual' : ''}${count ? ' multi' : ''}" ` +
+        `style="background:${overall.color}">${count}</div>`,
+      iconSize: [size, size],
+      iconAnchor: [size / 2, size / 2],
     });
 
-    const marker = L.marker([entry.lat, entry.lng], { icon })
-      .bindPopup(buildPopup(entry), { maxWidth: 280 })
+    const marker = L.marker([visits[0].lat, visits[0].lng], { icon })
+      .bindPopup(buildSpotPopup(key), {
+        maxWidth: 300,
+        minWidth: 240,
+        // Abstand zu den Bedienelementen oben (Menü, Zoom) und unten (Buttons)
+        autoPanPaddingTopLeft: L.point(12, 70),
+        autoPanPaddingBottomRight: L.point(12, 100),
+      })
       .addTo(ratingsLayer);
-    markersById.set(entry.id, marker);
+    markersBySpot.set(key, marker);
   }
 }
 
@@ -500,9 +673,12 @@ if ('geolocation' in navigator) {
 
 // ---- Menü ----
 
-// 'current' = aktueller Standort, 'manual' = auf der Karte gewählter Ort
+// 'current' = aktueller Standort, 'manual' = auf der Karte gewählter Ort,
+// 'visit' = weiterer Besuch an einem vorhandenen Spot (targetSpot)
 let menuMode = 'current';
 let pickedLatLng = null;
+let targetSpot = null;
+const visitDateLabelEl = document.getElementById('visit-date-label');
 
 function localDateString(date) {
   const pad = (n) => String(n).padStart(2, '0');
@@ -511,8 +687,11 @@ function localDateString(date) {
 
 function openMenu(mode) {
   menuMode = mode;
-  visitDateField.hidden = mode !== 'manual';
-  if (mode === 'manual') {
+  visitDateField.hidden = mode === 'current';
+  visitDateLabelEl.innerHTML = mode === 'visit'
+    ? 'Datum des Besuchs <span class="muted">(leer = jetzt)</span>'
+    : 'Wann warst du dort? <span class="muted">(optional)</span>';
+  if (mode !== 'current') {
     visitDateInput.value = '';
     visitTimeInput.value = '';
     visitDateInput.max = localDateString(new Date());
@@ -566,59 +745,21 @@ function showToast(text) {
 
 rateButton.addEventListener('click', () => openMenu('current'));
 
-async function saveManualRating(rating) {
-  const now = new Date();
-  const visitedAt = visitDateInput.value || null; // JJJJ-MM-TT
-  const visitedTime = (visitedAt && visitTimeInput.value) || null; // HH:MM
-  const entry = {
-    id: now.getTime().toString(36) + Math.random().toString(36).slice(2, 7),
-    lat: pickedLatLng.lat,
-    lng: pickedLatLng.lng,
-    accuracy: null,
-    rating,
-    timestamp: now.toISOString(),
-    manual: true,
-    visitedAt,
-    visitedTime,
-    moon: visitedAt && typeof moonPhaseAt === 'function'
-      ? moonPhaseAt(new Date(`${visitedAt}T${visitedTime || '12:00'}:00`)) : null,
-  };
-
-  closeMenu();
-  try {
-    await addRatings([entry]);
-  } catch {
-    showToast('Fehler: Ort konnte nicht gespeichert werden!');
-    return;
-  }
-  renderRatings();
-  updateBackupInfo();
-  if (!visitedAt) {
-    showToast(`„${RATINGS[rating].label}“ für den gewählten Ort gespeichert`);
-    return;
-  }
-
-  showToast(`„${RATINGS[rating].label}“ gespeichert – Wetterdaten vom ${
-    new Date(`${visitedAt}T12:00:00`).toLocaleDateString('de-DE')} werden abgerufen …`);
-  const conditions = await loadConditions(entry.id);
-  const failed = !conditions || Object.keys(conditions.errors).length > 0;
-  showToast(failed
-    ? 'Einige Daten konnten nicht abgerufen werden (Details im Punkt auf der Karte).'
-    : 'Wetterdaten für den Besuchstag gespeichert');
+function newId(now) {
+  return now.getTime().toString(36) + Math.random().toString(36).slice(2, 7);
 }
 
-async function saveCurrentRating(rating) {
-  const now = new Date();
-  const entry = {
-    id: now.getTime().toString(36) + Math.random().toString(36).slice(2, 7),
-    lat: currentPosition.lat,
-    lng: currentPosition.lng,
-    accuracy: currentPosition.accuracy,
-    rating,
-    timestamp: now.toISOString(),
-    moon: typeof moonPhaseAt === 'function' ? moonPhaseAt(now) : null,
-  };
+// Fragt, ob ein neuer Eintrag in der Nähe eines vorhandenen Spots zu diesem gehören soll.
+function askForNearbySpot(lat, lng) {
+  const near = nearbySpot(lat, lng);
+  if (!near) return null;
+  const ok = confirm(`Hier ist bereits ein Spot gespeichert (${Math.round(near.meters)} m entfernt). ` +
+    'Als weiteren Besuch zu diesem Spot hinzufügen?\n\nAbbrechen = als neuen Spot speichern.');
+  return ok ? near : null;
+}
 
+// Eintrag speichern, Karte aktualisieren und ggf. Wetterdaten nachladen.
+async function saveEntry(entry, { fetchData, openPopup }) {
   closeMenu();
   try {
     await addRatings([entry]);
@@ -628,13 +769,67 @@ async function saveCurrentRating(rating) {
   }
   renderRatings();
   updateBackupInfo();
-  showToast(`„${RATINGS[rating].label}“ gespeichert – Wetter und Wasserstand werden abgerufen …`);
+  if (openPopup) openSpot(spotKey(entry), entry.id);
 
+  const label = RATINGS[entry.rating].label;
+  if (!fetchData) {
+    showToast(`„${label}“ gespeichert`);
+    return;
+  }
+  showToast(entry.manual
+    ? `„${label}“ gespeichert – Wetterdaten vom ${visitDateLabel(entry, false)} werden abgerufen …`
+    : `„${label}“ gespeichert – Wetter und Wasserstand werden abgerufen …`);
   const conditions = await loadConditions(entry.id);
   const failed = !conditions || Object.keys(conditions.errors).length > 0;
   showToast(failed
-    ? 'Einige Daten konnten nicht abgerufen werden (Details im Punkt auf der Karte).'
-    : 'Wetter, Luftdruck und Wasserstand gespeichert');
+    ? 'Einige Daten konnten nicht abgerufen werden (Details im Spot auf der Karte).'
+    : entry.manual ? 'Wetterdaten für den Besuchstag gespeichert' : 'Wetter, Luftdruck und Wasserstand gespeichert');
+}
+
+function buildEntry(rating, lat, lng, { accuracy = null, spotId, dated }) {
+  const now = new Date();
+  const entry = { id: newId(now), lat, lng, accuracy, rating, timestamp: now.toISOString() };
+  if (spotId) entry.spotId = spotId;
+  if (dated) {
+    const visitedAt = visitDateInput.value || null; // JJJJ-MM-TT
+    const visitedTime = (visitedAt && visitTimeInput.value) || null; // HH:MM
+    Object.assign(entry, {
+      manual: true,
+      visitedAt,
+      visitedTime,
+      moon: visitedAt && typeof moonPhaseAt === 'function'
+        ? moonPhaseAt(new Date(`${visitedAt}T${visitedTime || '12:00'}:00`)) : null,
+    });
+  } else {
+    entry.moon = typeof moonPhaseAt === 'function' ? moonPhaseAt(now) : null;
+  }
+  return entry;
+}
+
+function saveManualRating(rating) {
+  const near = askForNearbySpot(pickedLatLng.lat, pickedLatLng.lng);
+  const entry = near
+    ? buildEntry(rating, near.lat, near.lng, { spotId: near.key, dated: true })
+    : buildEntry(rating, pickedLatLng.lat, pickedLatLng.lng, { dated: true });
+  saveEntry(entry, { fetchData: Boolean(entry.visitedAt), openPopup: Boolean(near) });
+}
+
+function saveCurrentRating(rating) {
+  const near = askForNearbySpot(currentPosition.lat, currentPosition.lng);
+  const entry = near
+    ? buildEntry(rating, near.lat, near.lng, { spotId: near.key })
+    : buildEntry(rating, currentPosition.lat, currentPosition.lng, { accuracy: currentPosition.accuracy });
+  saveEntry(entry, { fetchData: true, openPopup: Boolean(near) });
+}
+
+// Weiterer Besuch an einem vorhandenen Spot: ohne Datum = jetzt (aktuelle Daten),
+// mit Datum = vergangener Besuch (historische Daten).
+function saveVisitRating(rating) {
+  const visits = spotVisits(targetSpot);
+  if (!visits.length) return;
+  const { lat, lng } = visits[0];
+  const entry = buildEntry(rating, lat, lng, { spotId: targetSpot, dated: Boolean(visitDateInput.value) });
+  saveEntry(entry, { fetchData: !entry.manual || Boolean(entry.visitedAt), openPopup: true });
 }
 
 menu.addEventListener('click', (e) => {
@@ -649,7 +844,9 @@ menu.addEventListener('click', (e) => {
   const rating = button.dataset.rating;
   if (!rating) return;
 
-  if (menuMode === 'manual') {
+  if (menuMode === 'visit') {
+    if (targetSpot) saveVisitRating(rating);
+  } else if (menuMode === 'manual') {
     if (pickedLatLng) saveManualRating(rating);
   } else if (currentPosition) {
     saveCurrentRating(rating);

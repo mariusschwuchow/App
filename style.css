@@ -189,8 +189,66 @@ html, body {
 /* Manuell eingetragene Orte: dunkler Rand statt weißem */
 .rating-dot.manual { border-color: #24292f; }
 
+/* Spots mit mehreren Besuchen: größer, mit Anzahl */
+.rating-dot.multi {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font: 700 12px/1 system-ui, sans-serif;
+  text-shadow: 0 0 2px rgba(0, 0, 0, 0.6);
+}
+
+.spot-title { font-size: 15px; font-weight: 700; }
+
+.rating-badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+.spot-title .rating-badge { font-size: 14px; padding: 2px 10px; }
+
+.popup-add {
+  display: block;
+  width: 100%;
+  margin: 8px 0;
+  padding: 8px;
+  border: none;
+  border-radius: 8px;
+  background: #1f6feb;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.visit {
+  border: 1px solid #d0d7de;
+  border-radius: 10px;
+  padding: 6px 10px;
+  margin-top: 6px;
+}
+
+.visit summary {
+  cursor: pointer;
+  padding: 4px 0;
+  font-size: 14px;
+}
+
+.visit summary .visit-date { font-weight: 600; }
+.visit[open] summary { border-bottom: 1px solid #eaeef2; margin-bottom: 4px; }
+
+.spot-delete { margin-top: 10px; }
+
 .popup { font-size: 13px; line-height: 1.4; }
-.leaflet-popup-content { max-height: 60vh; overflow-y: auto; }
+.leaflet-popup-content { max-height: 55vh; overflow-y: auto; }
 
 .fish-chips { display: flex; gap: 6px; margin-top: 4px; flex-wrap: wrap; }
 

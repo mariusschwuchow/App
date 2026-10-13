@@ -28,9 +28,24 @@ gespeichert:
 Ältere manuelle Einträge mit Datum lassen sich im Punkt über „Wetterdaten abrufen“
 nachträglich ergänzen.
 
+## Spots mit mehreren Besuchen
+
+Ein Punkt auf der Karte ist ein **Spot**, der mehrere **Besuche** haben kann. Jeder Besuch
+hat eigene Bewertung, Wetter- und Pegeldaten, Mondphase, Fischarten und Notizen.
+
+- Im Spot über **„+ Besuch hinzufügen“** einen weiteren Besuch eintragen: ohne Datum gilt
+  er für jetzt (aktuelle Daten), mit Datum für einen vergangenen Tag.
+- Wird über „Standort bewerten“ oder „Ort wählen“ ein Ort im Umkreis von 50 m um einen
+  vorhandenen Spot bewertet, fragt die App, ob der Besuch zu diesem Spot gehört.
+- Die Besuche sind eingeklappt (neueste oben) und lassen sich einzeln aufklappen.
+- Die **Gesamtbewertung** ist der gerundete Durchschnitt aller Besuche
+  (Schlecht = 1, Mittel = 2, Gut = 3, Sehr gut = 4; genau in der Mitte wird aufgerundet).
+  Beispiel: Schlecht + Mittel + Gut = Mittel. Die Farbe des Punkts zeigt die
+  Gesamtbewertung, die Zahl darin die Anzahl der Besuche.
+
 ## Fischarten und Notizen
 
-Im Punkt auf der Karte kann man ankreuzen, welche Fischart dort gut lief (**Barsch**,
+Bei jedem Besuch kann man ankreuzen, welche Fischart dort gut lief (**Barsch**,
 **Zander**, **Hecht**, auch mehrere) und **Notizen** eintragen. Beides wird sofort
 gespeichert und ist in der Sicherungsdatei enthalten.
 
