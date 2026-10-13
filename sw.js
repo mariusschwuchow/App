@@ -1,5 +1,5 @@
-const CACHE = 'standort-bewertung-v3';
-const ASSETS = ['./', 'index.html', 'style.css', 'conditions.js', 'app.js', 'manifest.webmanifest', 'icon.svg'];
+const CACHE = 'standort-bewertung-v4';
+const ASSETS = ['./', 'index.html', 'style.css', 'moon.js', 'conditions.js', 'app.js', 'manifest.webmanifest', 'icon.svg'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)));

@@ -22,6 +22,9 @@ Direkt nach dem Speichern einer Bewertung ruft die App zusätzlich ab und speich
   PEGELONLINE enthält nur die Pegel an Bundeswasserstraßen. An kleineren Flüssen und Seen
   gibt es oft keinen Wert.
 
+Außerdem wird die **Mondphase** (Name und Beleuchtung in %) gespeichert. Sie wird direkt
+in der App berechnet und funktioniert daher auch ohne Netz.
+
 Die Bewertung selbst wird immer zuerst gespeichert. Klappt der Abruf nicht (z. B. ohne
 Netz), kann er bis zu 3 Stunden später im Punkt auf der Karte wiederholt werden.
 

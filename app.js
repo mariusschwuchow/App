@@ -244,7 +244,10 @@ function buildPopup(entry) {
   const rating = RATINGS[entry.rating];
   const popup = document.createElement('div');
   popup.className = 'popup';
+  // Ältere Bewertungen ohne gespeicherte Mondphase: aus dem Zeitpunkt berechnen.
+  const moon = entry.moon || moonPhaseAt(new Date(entry.timestamp));
   popup.innerHTML = `<strong>${rating.label}</strong><br>${new Date(entry.timestamp).toLocaleString('de-DE')}` +
+    `<div class="cond"><b>Mond:</b> ${moon.symbol} ${moon.name}, ${moon.illumination} % beleuchtet</div>` +
     conditionsHtml(entry);
 
   const actions = document.createElement('div');
@@ -406,13 +409,15 @@ menu.addEventListener('click', async (e) => {
   const rating = button.dataset.rating;
   if (!rating || !currentPosition) return;
 
+  const now = new Date();
   const entry = {
-    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+    id: now.getTime().toString(36) + Math.random().toString(36).slice(2, 7),
     lat: currentPosition.lat,
     lng: currentPosition.lng,
     accuracy: currentPosition.accuracy,
     rating,
-    timestamp: new Date().toISOString(),
+    timestamp: now.toISOString(),
+    moon: moonPhaseAt(now),
   };
 
   closeMenu();
