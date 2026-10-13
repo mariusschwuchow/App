@@ -28,24 +28,101 @@ html, body {
 
 .status.error { background: #ffe5e5; color: #a40000; }
 
-.rate-button {
+.bottom-bar {
   position: fixed;
+  left: 12px;
+  right: 12px;
   bottom: calc(24px + env(safe-area-inset-bottom));
-  left: 50%;
-  transform: translateX(-50%);
   z-index: 1000;
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+
+.bottom-bar[hidden] { display: none; }
+
+.rate-button,
+.pick-button {
   border: none;
   border-radius: 999px;
-  padding: 16px 28px;
-  font-size: 18px;
+  padding: 16px 22px;
+  font-size: 17px;
   font-weight: 600;
-  color: #fff;
-  background: #1f6feb;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   cursor: pointer;
 }
 
+.rate-button { color: #fff; background: #1f6feb; }
 .rate-button:disabled { background: #8a8f98; cursor: not-allowed; }
+.pick-button { color: #1f6feb; background: #fff; }
+
+.crosshair {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  width: 44px;
+  height: 44px;
+  margin: -22px 0 0 -22px;
+  z-index: 999;
+  pointer-events: none;
+  background:
+    linear-gradient(#cf222e, #cf222e) center / 3px 100% no-repeat,
+    linear-gradient(#cf222e, #cf222e) center / 100% 3px no-repeat;
+  filter: drop-shadow(0 0 2px #fff) drop-shadow(0 0 2px #fff);
+}
+
+.crosshair[hidden] { display: none; }
+
+.pick-bar {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: calc(24px + env(safe-area-inset-bottom));
+  z-index: 1000;
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 12px;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+.pick-bar[hidden] { display: none; }
+.pick-bar p { margin: 0 0 10px; font-size: 15px; }
+.pick-actions { display: flex; gap: 8px; }
+
+.pick-actions button {
+  flex: 1;
+  border: none;
+  border-radius: 10px;
+  padding: 14px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+  background: #1f6feb;
+  cursor: pointer;
+}
+
+.pick-actions .secondary { background: #eaeef2; color: #24292f; }
+
+.visit-date-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.visit-date-field[hidden] { display: none; }
+.visit-date-field .muted { color: #6e7781; font-weight: 400; }
+
+.visit-date-field input {
+  font-size: 17px;
+  padding: 10px;
+  border: 1px solid #d0d7de;
+  border-radius: 10px;
+}
 
 .rating-menu {
   position: fixed;
@@ -84,7 +161,9 @@ html, body {
 
 .toast {
   position: fixed;
-  bottom: calc(96px + env(safe-area-inset-bottom));
+  top: calc(68px + env(safe-area-inset-top));
+  max-width: calc(100% - 140px);
+  text-align: center;
   left: 50%;
   transform: translateX(-50%);
   z-index: 1002;
@@ -104,6 +183,9 @@ html, body {
   border: 2px solid #fff;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
 }
+
+/* Manuell eingetragene Orte: dunkler Rand statt weißem */
+.rating-dot.manual { border-color: #24292f; }
 
 .popup { font-size: 13px; line-height: 1.4; }
 .popup .cond { margin-top: 6px; }

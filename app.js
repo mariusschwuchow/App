@@ -16,6 +16,12 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 
 const statusEl = document.getElementById('status');
 const rateButton = document.getElementById('rate-button');
+const pickButton = document.getElementById('pick-button');
+const bottomBar = document.getElementById('bottom-bar');
+const crosshair = document.getElementById('crosshair');
+const pickBar = document.getElementById('pick-bar');
+const visitDateField = document.getElementById('visit-date-field');
+const visitDateInput = document.getElementById('visit-date');
 const menu = document.getElementById('rating-menu');
 const toast = document.getElementById('toast');
 
@@ -234,6 +240,7 @@ function conditionsHtml(entry) {
 }
 
 function canRetry(entry) {
+  if (entry.manual) return false;
   const c = entry.conditions;
   const incomplete = !c || (c.errors && Object.keys(c.errors).length > 0);
   return incomplete && !loadingIds.has(entry.id) &&
@@ -245,11 +252,18 @@ function buildPopup(entry) {
   const popup = document.createElement('div');
   popup.className = 'popup';
   // Ältere Bewertungen ohne gespeicherte Mondphase: aus dem Zeitpunkt berechnen.
-  const moon = entry.moon ||
-    (typeof moonPhaseAt === 'function' ? moonPhaseAt(new Date(entry.timestamp)) : null);
-  popup.innerHTML = `<strong>${rating.label}</strong><br>${new Date(entry.timestamp).toLocaleString('de-DE')}` +
-    (moon ? `<div class="cond"><b>Mond:</b> ${moon.symbol} ${moon.name}, ${moon.illumination} % beleuchtet</div>` : '') +
-    conditionsHtml(entry);
+  // Manuelle Einträge haben nur dann eine Mondphase, wenn ein Datum angegeben wurde.
+  const moon = entry.moon || (!entry.manual && typeof moonPhaseAt === 'function'
+    ? moonPhaseAt(new Date(entry.timestamp)) : null);
+  const when = entry.manual
+    ? (entry.visitedAt
+      ? `Besucht am ${new Date(`${entry.visitedAt}T12:00:00`).toLocaleDateString('de-DE')}`
+      : 'Besuchsdatum unbekannt') + '<br><span class="muted">manuell eingetragen</span>'
+    : new Date(entry.timestamp).toLocaleString('de-DE');
+  popup.innerHTML = `<strong>${rating.label}</strong><br>${when}` +
+    (moon ? `<div class="cond"><b>Mond${entry.manual ? ' (Tagesmitte)' : ''}:</b> ${moon.symbol} ${moon.name}, ` +
+      `${moon.illumination} % beleuchtet</div>` : '') +
+    (entry.manual ? '' : conditionsHtml(entry));
 
   const actions = document.createElement('div');
   actions.className = 'popup-actions';
@@ -291,7 +305,7 @@ function renderRatings() {
 
     const icon = L.divIcon({
       className: '',
-      html: `<div class="rating-dot" style="background:${rating.color}"></div>`,
+      html: `<div class="rating-dot${entry.manual ? ' manual' : ''}" style="background:${rating.color}"></div>`,
       iconSize: [18, 18],
       iconAnchor: [9, 9],
     });
@@ -376,17 +390,60 @@ if ('geolocation' in navigator) {
 
 // ---- Menü ----
 
-function openMenu() {
+// 'current' = aktueller Standort, 'manual' = auf der Karte gewählter Ort
+let menuMode = 'current';
+let pickedLatLng = null;
+
+function localDateString(date) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+function openMenu(mode) {
+  menuMode = mode;
+  visitDateField.hidden = mode !== 'manual';
+  if (mode === 'manual') {
+    visitDateInput.value = '';
+    visitDateInput.max = localDateString(new Date());
+  }
   menu.hidden = false;
-  rateButton.hidden = true;
+  bottomBar.hidden = true;
   rateButton.setAttribute('aria-expanded', 'true');
 }
 
 function closeMenu() {
   menu.hidden = true;
-  rateButton.hidden = false;
+  bottomBar.hidden = false;
   rateButton.setAttribute('aria-expanded', 'false');
 }
+
+function startPicking() {
+  map.closePopup();
+  ratingsLayer.eachLayer((layer) => layer.closePopup());
+  bottomBar.hidden = true;
+  crosshair.hidden = false;
+  pickBar.hidden = false;
+}
+
+function stopPicking() {
+  crosshair.hidden = true;
+  pickBar.hidden = true;
+  bottomBar.hidden = false;
+}
+
+pickButton.addEventListener('click', startPicking);
+document.getElementById('pick-cancel').addEventListener('click', stopPicking);
+document.getElementById('pick-confirm').addEventListener('click', () => {
+  pickedLatLng = map.getCenter();
+  crosshair.hidden = true;
+  pickBar.hidden = true;
+  openMenu('manual');
+});
+
+// Im Auswahlmodus springt die Karte auf einen angetippten Punkt.
+map.on('click', (e) => {
+  if (!pickBar.hidden) map.panTo(e.latlng);
+});
 
 let toastTimer;
 function showToast(text) {
@@ -396,20 +453,37 @@ function showToast(text) {
   toastTimer = setTimeout(() => { toast.hidden = true; }, 2500);
 }
 
-rateButton.addEventListener('click', openMenu);
+rateButton.addEventListener('click', () => openMenu('current'));
 
-menu.addEventListener('click', async (e) => {
-  const button = e.target.closest('button');
-  if (!button) return;
+async function saveManualRating(rating) {
+  const now = new Date();
+  const visitedAt = visitDateInput.value || null; // JJJJ-MM-TT
+  const entry = {
+    id: now.getTime().toString(36) + Math.random().toString(36).slice(2, 7),
+    lat: pickedLatLng.lat,
+    lng: pickedLatLng.lng,
+    accuracy: null,
+    rating,
+    timestamp: now.toISOString(),
+    manual: true,
+    visitedAt,
+    moon: visitedAt && typeof moonPhaseAt === 'function'
+      ? moonPhaseAt(new Date(`${visitedAt}T12:00:00`)) : null,
+  };
 
-  if (button.hasAttribute('data-cancel')) {
-    closeMenu();
+  closeMenu();
+  try {
+    await addRatings([entry]);
+  } catch {
+    showToast('Fehler: Ort konnte nicht gespeichert werden!');
     return;
   }
+  renderRatings();
+  updateBackupInfo();
+  showToast(`„${RATINGS[rating].label}“ für den gewählten Ort gespeichert`);
+}
 
-  const rating = button.dataset.rating;
-  if (!rating || !currentPosition) return;
-
+async function saveCurrentRating(rating) {
   const now = new Date();
   const entry = {
     id: now.getTime().toString(36) + Math.random().toString(36).slice(2, 7),
@@ -437,6 +511,25 @@ menu.addEventListener('click', async (e) => {
   showToast(failed
     ? 'Einige Daten konnten nicht abgerufen werden (Details im Punkt auf der Karte).'
     : 'Wetter, Luftdruck und Wasserstand gespeichert');
+}
+
+menu.addEventListener('click', (e) => {
+  const button = e.target.closest('button');
+  if (!button) return;
+
+  if (button.hasAttribute('data-cancel')) {
+    closeMenu();
+    return;
+  }
+
+  const rating = button.dataset.rating;
+  if (!rating) return;
+
+  if (menuMode === 'manual') {
+    if (pickedLatLng) saveManualRating(rating);
+  } else if (currentPosition) {
+    saveCurrentRating(rating);
+  }
 });
 
 // ---- Sicherung (Export / Import) ----

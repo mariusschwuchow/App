@@ -9,6 +9,17 @@ Punkt auf der Karte angezeigt. Ein Tipp auf einen Punkt zeigt Details und erlaub
 - Speicherung: lokal auf dem Gerät, doppelt in IndexedDB und `localStorage`
 - Kein Build-Schritt nötig – reine HTML/CSS/JS-Dateien
 
+## Orte manuell eintragen
+
+Über **„Ort wählen“** lassen sich Orte markieren, an denen du früher schon warst. Dafür
+die Karte verschieben (oder auf den Ort tippen), bis das rote Kreuz auf dem Ort liegt, dann
+**„Hier markieren“** antippen. Danach Bewertung und optional das Besuchsdatum wählen.
+
+Manuell eingetragene Orte haben auf der Karte einen dunklen Rand. Wurde ein Datum
+angegeben, wird die Mondphase dieses Tages (Tagesmitte) gespeichert. Wetter und
+Wasserstand werden für manuelle Orte nicht abgerufen, weil die aktuellen Werte nicht zum
+damaligen Besuch passen würden.
+
 ## Wetter, Luftdruck und Wasserstand
 
 Direkt nach dem Speichern einer Bewertung ruft die App zusätzlich ab und speichert mit:

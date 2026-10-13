@@ -15,11 +15,28 @@
 
   <div id="status" class="status">Standort wird ermittelt …</div>
 
-  <button id="rate-button" class="rate-button" disabled aria-haspopup="true" aria-expanded="false">
-    Standort bewerten
-  </button>
+  <div id="bottom-bar" class="bottom-bar">
+    <button id="pick-button" class="pick-button">Ort wählen</button>
+    <button id="rate-button" class="rate-button" disabled aria-haspopup="true" aria-expanded="false">
+      Standort bewerten
+    </button>
+  </div>
+
+  <div id="crosshair" class="crosshair" hidden aria-hidden="true"></div>
+
+  <div id="pick-bar" class="pick-bar" hidden>
+    <p>Karte verschieben, bis das Kreuz auf dem Ort liegt, an dem du warst.</p>
+    <div class="pick-actions">
+      <button id="pick-cancel" class="secondary">Abbrechen</button>
+      <button id="pick-confirm">Hier markieren</button>
+    </div>
+  </div>
 
   <div id="rating-menu" class="rating-menu" hidden role="menu" aria-label="Bewertung auswählen">
+    <label id="visit-date-field" class="visit-date-field" hidden>
+      Wann warst du dort? <span class="muted">(optional)</span>
+      <input id="visit-date" type="date">
+    </label>
     <button role="menuitem" data-rating="sehr-gut">Sehr gut</button>
     <button role="menuitem" data-rating="gut">Gut</button>
     <button role="menuitem" data-rating="mittel">Mittel</button>
