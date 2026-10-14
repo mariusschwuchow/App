@@ -465,3 +465,93 @@ html, body {
 }
 
 .analysis-bar span { display: block; height: 100%; background: #1f6feb; border-radius: 3px; }
+
+/* ---- Spot-Name, Fischgrößen, Fotos ---- */
+
+.spot-name { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
+.analysis-name { color: #24292f; }
+
+.size-rows { margin-top: 6px; }
+
+.size-row {
+  background: #f6f8fa;
+  border-radius: 8px;
+  padding: 6px 8px;
+  margin-top: 6px;
+}
+
+.size-head { display: flex; justify-content: space-between; font-weight: 600; }
+.size-value { color: #1f6feb; }
+.size-controls { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+.size-controls input[type="range"] { flex: 1; min-width: 0; accent-color: #1f6feb; height: 28px; }
+
+.size-step {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border: 1px solid #d0d7de;
+  border-radius: 8px;
+  background: #fff;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.photo-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.photo-grid img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.photo-add {
+  display: block;
+  margin-top: 6px;
+  padding: 8px;
+  border: 1px dashed #1f6feb;
+  border-radius: 8px;
+  color: #1f6feb;
+  font-weight: 600;
+  text-align: center;
+  cursor: pointer;
+}
+
+.photo-add input { display: none; }
+
+.photo-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  background: rgba(0, 0, 0, 0.92);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: calc(16px + env(safe-area-inset-top)) 12px calc(16px + env(safe-area-inset-bottom));
+  gap: 12px;
+}
+
+.photo-viewer[hidden] { display: none; }
+.photo-viewer img { max-width: 100%; max-height: calc(100% - 70px); object-fit: contain; border-radius: 6px; }
+.photo-viewer-actions { display: flex; gap: 10px; }
+
+.photo-viewer-actions button {
+  border: none;
+  border-radius: 10px;
+  padding: 12px 22px;
+  font-size: 16px;
+  font-weight: 600;
+  background: #fff;
+  color: #24292f;
+  cursor: pointer;
+}
+
+.photo-viewer-actions .danger { background: #cf222e; color: #fff; }

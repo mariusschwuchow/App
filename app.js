@@ -44,6 +44,8 @@ let hasCentered = false;
 
 const DB_NAME = 'standort-bewertung';
 const DB_STORE = 'ratings';
+// Fotos liegen nur in IndexedDB (für localStorage zu groß) und in der Sicherungsdatei.
+const PHOTO_STORE = 'photos';
 
 let ratings = [];
 let dbPromise = null;
@@ -52,19 +54,29 @@ function openDb() {
   if (!dbPromise) {
     dbPromise = new Promise((resolve, reject) => {
       if (!('indexedDB' in window)) return reject(new Error('IndexedDB nicht verfügbar'));
-      const req = indexedDB.open(DB_NAME, 1);
-      req.onupgradeneeded = () => req.result.createObjectStore(DB_STORE, { keyPath: 'id' });
-      req.onsuccess = () => resolve(req.result);
+      const req = indexedDB.open(DB_NAME, 2);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(DB_STORE)) db.createObjectStore(DB_STORE, { keyPath: 'id' });
+        if (!db.objectStoreNames.contains(PHOTO_STORE)) {
+          db.createObjectStore(PHOTO_STORE, { keyPath: 'id' }).createIndex('entryId', 'entryId');
+        }
+      };
+      req.onsuccess = () => {
+        // Eine neuere App-Version in einem anderen Tab darf die Datenbank aktualisieren.
+        req.result.onversionchange = () => req.result.close();
+        resolve(req.result);
+      };
       req.onerror = () => reject(req.error);
     });
   }
   return dbPromise;
 }
 
-function dbRequest(mode, fn) {
+function dbRequest(mode, fn, storeName = DB_STORE) {
   return openDb().then((db) => new Promise((resolve, reject) => {
-    const tx = db.transaction(DB_STORE, mode);
-    const result = fn(tx.objectStore(DB_STORE));
+    const tx = db.transaction(storeName, mode);
+    const result = fn(tx.objectStore(storeName));
     tx.oncomplete = () => resolve(result && result.result);
     tx.onerror = () => reject(tx.error);
     tx.onabort = () => reject(tx.error);
@@ -160,13 +172,57 @@ async function updateRating(entry) {
 
 async function deleteRating(id) {
   await ratingsReady;
+  const entry = getEntry(id);
   ratings = ratings.filter((r) => r.id !== id);
   try {
     await dbRequest('readwrite', (store) => store.delete(id));
+    for (const photoId of (entry && entry.photoIds) || []) await deletePhotoBlob(photoId);
   } catch (err) {
     console.warn('IndexedDB konnte nicht geschrieben werden', err);
   }
   writeLocalCopy();
+}
+
+// ---- Fotos ----
+
+function savePhotoBlob(photo) {
+  return dbRequest('readwrite', (store) => store.put(photo), PHOTO_STORE);
+}
+
+function getPhotoBlob(id) {
+  return dbRequest('readonly', (store) => store.get(id), PHOTO_STORE);
+}
+
+function getAllPhotoBlobs() {
+  return dbRequest('readonly', (store) => store.getAll(), PHOTO_STORE);
+}
+
+function deletePhotoBlob(id) {
+  return dbRequest('readwrite', (store) => store.delete(id), PHOTO_STORE);
+}
+
+// Verkleinert ein Foto (längste Seite max. 1600 px, JPEG), damit der Speicher reicht.
+async function compressImage(file, maxSize = 1600, quality = 0.8) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((resolve, reject) => {
+      const i = new Image();
+      i.onload = () => resolve(i);
+      i.onerror = reject;
+      i.src = url;
+    });
+    const scale = Math.min(1, maxSize / Math.max(img.naturalWidth, img.naturalHeight));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(img.naturalWidth * scale);
+    canvas.height = Math.round(img.naturalHeight * scale);
+    canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality));
+    return blob || file;
+  } catch {
+    return file; // Format nicht lesbar: Original speichern
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }
 
 // Bittet den Browser, die Daten nicht automatisch zu löschen
@@ -355,12 +411,87 @@ function renderPopupDetails(entry, container) {
   }
 }
 
+const FISH_SIZE_MIN = 1;
+const FISH_SIZE_MAX = 150;
+
+function fishLabelWithSize(entry, f) {
+  const size = entry.fishSizes && entry.fishSizes[f];
+  return size ? `${FISH[f]} ${size} cm` : FISH[f];
+}
+
+// Größe einer Fischart per Schieberegler (1–150 cm) mit −/+ für zentimetergenaues Einstellen.
+function buildSizeRow(id, key) {
+  const row = document.createElement('div');
+  row.className = 'size-row';
+  const current = (getEntry(id).fishSizes || {})[key];
+
+  const name = document.createElement('span');
+  name.className = 'size-name';
+  name.textContent = FISH[key];
+  const value = document.createElement('span');
+  value.className = 'size-value';
+  const slider = document.createElement('input');
+  slider.type = 'range';
+  slider.min = String(FISH_SIZE_MIN);
+  slider.max = String(FISH_SIZE_MAX);
+  slider.step = '1';
+  slider.value = String(current || 50);
+  slider.setAttribute('aria-label', `Größe ${FISH[key]} in cm`);
+  const show = (v) => { value.textContent = v ? `${v} cm` : '– cm'; };
+  show(current);
+
+  const save = async () => {
+    const entry = getEntry(id);
+    if (!entry) return;
+    const size = Number(slider.value);
+    show(size);
+    await updateRating({ ...entry, fishSizes: { ...(entry.fishSizes || {}), [key]: size } });
+    refreshSpotSummary(spotKey(getEntry(id)));
+  };
+  slider.addEventListener('input', () => show(Number(slider.value)));
+  slider.addEventListener('change', save);
+  // Leaflet soll Wischen auf dem Regler nicht als Kartenbewegung verstehen.
+  L.DomEvent.disableClickPropagation(row);
+
+  const step = (delta) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'size-step';
+    btn.textContent = delta < 0 ? '−' : '+';
+    btn.setAttribute('aria-label', `${FISH[key]} ${delta < 0 ? 'kleiner' : 'größer'}`);
+    btn.addEventListener('click', () => {
+      slider.value = String(Math.min(FISH_SIZE_MAX, Math.max(FISH_SIZE_MIN, Number(slider.value) + delta)));
+      save();
+    });
+    return btn;
+  };
+
+  const head = document.createElement('div');
+  head.className = 'size-head';
+  head.append(name, value);
+  const controls = document.createElement('div');
+  controls.className = 'size-controls';
+  controls.append(step(-1), slider, step(1));
+  row.append(head, controls);
+  return row;
+}
+
 function buildFishPicker(id) {
   const wrap = document.createElement('div');
   wrap.className = 'cond';
   wrap.innerHTML = '<b>Gut gefangen:</b>';
   const chips = document.createElement('div');
   chips.className = 'fish-chips';
+  const sizes = document.createElement('div');
+  sizes.className = 'size-rows';
+
+  const renderSizes = () => {
+    sizes.innerHTML = '';
+    for (const f of getEntry(id).fish || []) sizes.appendChild(buildSizeRow(id, f));
+    const marker = markersBySpot.get(spotKey(getEntry(id)));
+    if (marker && marker.isPopupOpen()) marker.getPopup().update();
+  };
+
   for (const [key, label] of Object.entries(FISH)) {
     const chip = document.createElement('button');
     chip.type = 'button';
@@ -372,16 +503,129 @@ function buildFishPicker(id) {
       const current = getEntry(id);
       if (!current) return;
       const fish = new Set(current.fish || []);
-      if (fish.has(key)) fish.delete(key); else fish.add(key);
+      const fishSizes = { ...(current.fishSizes || {}) };
+      if (fish.has(key)) {
+        fish.delete(key);
+        delete fishSizes[key];
+      } else {
+        fish.add(key);
+      }
       chip.setAttribute('aria-pressed', String(fish.has(key)));
-      await updateRating({ ...getEntry(id), fish: Object.keys(FISH).filter((k) => fish.has(k)) });
+      await updateRating({ ...getEntry(id), fish: Object.keys(FISH).filter((k) => fish.has(k)), fishSizes });
+      renderSizes();
       refreshSpotSummary(spotKey(getEntry(id)));
     });
     chips.appendChild(chip);
   }
-  wrap.appendChild(chips);
+  wrap.append(chips, sizes);
+  for (const f of getEntry(id).fish || []) sizes.appendChild(buildSizeRow(id, f));
   return wrap;
 }
+
+// Fotos eines Besuchs: Vorschaubilder, Hinzufügen aus der Foto-App, Vollbild mit Löschen.
+function buildPhotoSection(id) {
+  const wrap = document.createElement('div');
+  wrap.className = 'cond photo-section';
+  wrap.innerHTML = '<b>Fotos:</b>';
+  const grid = document.createElement('div');
+  grid.className = 'photo-grid';
+
+  const clear = () => {
+    grid.querySelectorAll('img').forEach((img) => URL.revokeObjectURL(img.src));
+    grid.innerHTML = '';
+  };
+  const render = async () => {
+    clear();
+    const entry = getEntry(id);
+    if (!entry) return;
+    for (const photoId of entry.photoIds || []) {
+      let photo = null;
+      try { photo = await getPhotoBlob(photoId); } catch { /* fehlt */ }
+      if (!photo) continue;
+      const img = document.createElement('img');
+      img.src = URL.createObjectURL(photo.blob);
+      img.alt = 'Foto';
+      img.addEventListener('click', (e) => {
+        L.DomEvent.stopPropagation(e);
+        openPhotoViewer(id, photoId, render);
+      });
+      grid.appendChild(img);
+    }
+    const marker = markersBySpot.get(spotKey(getEntry(id)));
+    if (marker && marker.isPopupOpen()) marker.getPopup().update();
+  };
+
+  const add = document.createElement('label');
+  add.className = 'photo-add';
+  add.textContent = '+ Foto hinzufügen';
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.multiple = true;
+  input.addEventListener('change', async () => {
+    const files = [...input.files];
+    input.value = '';
+    if (!files.length) return;
+    showToast(files.length === 1 ? 'Foto wird gespeichert …' : `${files.length} Fotos werden gespeichert …`);
+    const ids = [];
+    try {
+      for (const file of files) {
+        const blob = await compressImage(file);
+        const photoId = newId(new Date());
+        await savePhotoBlob({ id: photoId, entryId: id, blob, createdAt: new Date().toISOString() });
+        ids.push(photoId);
+      }
+    } catch {
+      showToast('Foto konnte nicht gespeichert werden (Speicher voll?)');
+    }
+    if (!ids.length) return;
+    const entry = getEntry(id);
+    await updateRating({ ...entry, photoIds: [...(entry.photoIds || []), ...ids] });
+    await render();
+    refreshSpotSummary(spotKey(getEntry(id)));
+    showToast(ids.length === 1 ? 'Foto gespeichert' : `${ids.length} Fotos gespeichert`);
+  });
+  add.appendChild(input);
+  L.DomEvent.disableClickPropagation(add);
+
+  wrap.append(grid, add);
+  // Vorschaubilder erst laden, wenn der Besuch sichtbar ist (siehe loadVisiblePhotos).
+  wrap.renderPhotos = render;
+  wrap.clearPhotos = clear;
+  return wrap;
+}
+
+const photoViewer = document.getElementById('photo-viewer');
+const photoViewerImg = document.getElementById('photo-viewer-img');
+let photoViewerState = null;
+
+async function openPhotoViewer(entryId, photoId, onChange) {
+  const photo = await getPhotoBlob(photoId);
+  if (!photo) return;
+  if (photoViewerImg.src) URL.revokeObjectURL(photoViewerImg.src);
+  photoViewerImg.src = URL.createObjectURL(photo.blob);
+  photoViewerState = { entryId, photoId, onChange };
+  photoViewer.hidden = false;
+}
+
+function closePhotoViewer() {
+  photoViewer.hidden = true;
+  if (photoViewerImg.src) URL.revokeObjectURL(photoViewerImg.src);
+  photoViewerImg.removeAttribute('src');
+  photoViewerState = null;
+}
+
+document.getElementById('photo-viewer-close').addEventListener('click', closePhotoViewer);
+document.getElementById('photo-viewer-delete').addEventListener('click', async () => {
+  if (!photoViewerState || !confirm('Dieses Foto wirklich löschen?')) return;
+  const { entryId, photoId, onChange } = photoViewerState;
+  const entry = getEntry(entryId);
+  if (entry) await updateRating({ ...entry, photoIds: (entry.photoIds || []).filter((p) => p !== photoId) });
+  try { await deletePhotoBlob(photoId); } catch { /* bereits weg */ }
+  closePhotoViewer();
+  await onChange();
+  if (entry) refreshSpotSummary(spotKey(getEntry(entryId)));
+});
 
 function buildNotesField(id) {
   const wrap = document.createElement('label');
@@ -416,9 +660,25 @@ function buildNotesField(id) {
 
 function fishSummary(visits) {
   const counts = {};
-  for (const v of visits) for (const f of v.fish || []) counts[f] = (counts[f] || 0) + 1;
-  return Object.keys(FISH).filter((f) => counts[f])
-    .map((f) => (visits.length > 1 ? `${FISH[f]} ${counts[f]}×` : FISH[f])).join(', ');
+  const max = {};
+  for (const v of visits) {
+    for (const f of v.fish || []) {
+      counts[f] = (counts[f] || 0) + 1;
+      const size = v.fishSizes && v.fishSizes[f];
+      if (size && (!max[f] || size > max[f])) max[f] = size;
+    }
+  }
+  return Object.keys(FISH).filter((f) => counts[f]).map((f) => {
+    let text = visits.length > 1 ? `${FISH[f]} ${counts[f]}×` : FISH[f];
+    if (max[f]) text += visits.length > 1 ? ` (max. ${max[f]} cm)` : ` ${max[f]} cm`;
+    return text;
+  }).join(', ');
+}
+
+// Name des Spots = nächstgelegener Ort (bei einem der Besuche gespeichert).
+function spotName(key) {
+  const v = spotVisits(key).find((e) => e.placeName);
+  return v ? v.placeName : null;
 }
 
 function ratingBadge(key) {
@@ -428,7 +688,9 @@ function ratingBadge(key) {
 function spotHeaderHtml(key) {
   const visits = spotVisits(key);
   const overall = overallRating(visits);
-  let html = visits.length > 1
+  const name = spotName(key);
+  let html = `<div class="spot-name">📍 ${name ? escapeHtml(name) : '<span class="muted">Ort wird ermittelt …</span>'}</div>`;
+  html += visits.length > 1
     ? `<div class="spot-title">Gesamt: ${ratingBadge(overall)}</div>` +
       `<div class="muted">${visits.length} Besuche: ` +
       Object.keys(SCORES).reverse()
@@ -441,9 +703,11 @@ function spotHeaderHtml(key) {
 }
 
 function visitTitleHtml(entry) {
-  const fish = (entry.fish || []).map((f) => FISH[f]).join(', ');
+  const fish = (entry.fish || []).map((f) => fishLabelWithSize(entry, f)).join(', ');
+  const photos = (entry.photoIds || []).length;
   return `<span class="visit-date">${escapeHtml(visitDateLabel(entry, false))}</span> ${ratingBadge(entry.rating)}` +
-    (fish ? ` <span class="muted">${fish}</span>` : '');
+    (fish ? ` <span class="muted">${fish}</span>` : '') +
+    (photos ? ` <span class="muted">📷 ${photos}</span>` : '');
 }
 
 function buildVisit(entry, open) {
@@ -458,6 +722,8 @@ function buildVisit(entry, open) {
   summary.innerHTML = `<span class="visit-title">${visitTitleHtml(entry)}</span>`;
   // Auf- und Zuklappen ändert die Höhe: Popup neu ausrichten.
   visit.addEventListener('toggle', () => {
+    const section = visit.querySelector('.photo-section');
+    if (section) { if (visit.open) section.renderPhotos(); else section.clearPhotos(); }
     const marker = markersBySpot.get(spotKey(entry));
     if (marker && marker.isPopupOpen()) marker.getPopup().update();
   });
@@ -486,7 +752,7 @@ function buildVisit(entry, open) {
   });
   actions.appendChild(del);
 
-  visit.append(summary, when, details, buildFishPicker(id), buildNotesField(id), actions);
+  visit.append(summary, when, details, buildFishPicker(id), buildNotesField(id), buildPhotoSection(id), actions);
   return visit;
 }
 
@@ -562,6 +828,32 @@ function refreshPopup(id) {
   markersBySpot.get(spotKey(entry)).getPopup().update();
 }
 
+// Ermittelt fehlende Spot-Namen (nächstgelegener Ort) und speichert sie bei allen
+// Besuchen des Spots. Läuft beim Start und nach dem Anlegen neuer Spots.
+const namingSpots = new Set();
+async function ensureSpotNames() {
+  for (const key of allSpotKeys()) {
+    if (spotName(key) || namingSpots.has(key)) continue;
+    namingSpots.add(key);
+    const { lat, lng } = spotVisits(key)[0];
+    queueReverseGeocode(lat, lng).then(async (name) => {
+      if (!name) return;
+      for (const v of spotVisits(key)) await updateRating({ ...getEntry(v.id), placeName: name });
+      refreshSpotSummary(key);
+    }).catch(() => { /* offline o. Ä.: beim nächsten Start erneut versuchen */ })
+      .finally(() => namingSpots.delete(key));
+  }
+}
+
+// Lädt Vorschaubilder nur für aufgeklappte Besuche im geöffneten Popup.
+function loadVisiblePhotos(content) {
+  content.querySelectorAll('details.visit').forEach((visit) => {
+    const section = visit.querySelector('.photo-section');
+    if (!section) return;
+    if (visit.open) section.renderPhotos(); else section.clearPhotos();
+  });
+}
+
 function openSpot(key, expandId) {
   const marker = markersBySpot.get(key);
   if (!marker) return;
@@ -596,6 +888,9 @@ function renderRatings() {
         autoPanPaddingBottomRight: L.point(12, 100),
       })
       .addTo(ratingsLayer);
+    marker.on('popupopen', () => loadVisiblePhotos(marker.getPopup().getContent()));
+    marker.on('popupclose', () => marker.getPopup().getContent()
+      .querySelectorAll('.photo-section').forEach((sec) => sec.clearPhotos()));
     markersBySpot.set(key, marker);
   }
 }
@@ -770,6 +1065,7 @@ async function saveEntry(entry, { fetchData, openPopup }) {
   renderRatings();
   updateBackupInfo();
   if (openPopup) openSpot(spotKey(entry), entry.id);
+  ensureSpotNames();
 
   const label = RATINGS[entry.rating].label;
   if (!fetchData) {
@@ -789,7 +1085,11 @@ async function saveEntry(entry, { fetchData, openPopup }) {
 function buildEntry(rating, lat, lng, { accuracy = null, spotId, dated }) {
   const now = new Date();
   const entry = { id: newId(now), lat, lng, accuracy, rating, timestamp: now.toISOString() };
-  if (spotId) entry.spotId = spotId;
+  if (spotId) {
+    entry.spotId = spotId;
+    const name = spotName(spotId);
+    if (name) entry.placeName = name;
+  }
   if (dated) {
     const visitedAt = visitDateInput.value || null; // JJJJ-MM-TT
     const visitedTime = (visitedAt && visitTimeInput.value) || null; // HH:MM
@@ -877,8 +1177,28 @@ backupToggle.addEventListener('click', () => {
   updateBackupInfo();
 });
 
-exportButton.addEventListener('click', () => {
-  const data = JSON.stringify({ app: 'standort-bewertung', version: 1, ratings }, null, 2);
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
+exportButton.addEventListener('click', async () => {
+  let photos = [];
+  try {
+    const all = await getAllPhotoBlobs();
+    if (all && all.length) showToast(`Sicherung mit ${all.length} Fotos wird erstellt …`);
+    for (const p of all || []) {
+      photos.push({ id: p.id, entryId: p.entryId, createdAt: p.createdAt, dataUrl: await blobToDataUrl(p.blob) });
+    }
+  } catch (err) {
+    console.warn('Fotos konnten nicht gelesen werden', err);
+    photos = [];
+  }
+  const data = JSON.stringify({ app: 'standort-bewertung', version: 2, ratings, photos });
   const blob = new Blob([data], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -887,7 +1207,7 @@ exportButton.addEventListener('click', () => {
   document.body.appendChild(a);
   a.click();
   a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
 });
 
 importInput.addEventListener('change', async () => {
@@ -901,10 +1221,22 @@ importInput.addEventListener('change', async () => {
     const valid = list.filter((r) =>
       r && typeof r.id === 'string' && RATINGS[r.rating] &&
       Number.isFinite(r.lat) && Number.isFinite(r.lng) && typeof r.timestamp === 'string');
+
+    let photoCount = 0;
+    for (const p of (!Array.isArray(parsed) && parsed.photos) || []) {
+      if (!p || typeof p.id !== 'string' || typeof p.dataUrl !== 'string' || !p.dataUrl.startsWith('data:image/')) continue;
+      if (await getPhotoBlob(p.id)) continue;
+      const blob = await (await fetch(p.dataUrl)).blob();
+      await savePhotoBlob({ id: p.id, entryId: p.entryId, blob, createdAt: p.createdAt });
+      photoCount++;
+    }
+
     const added = await addRatings(valid);
     renderRatings();
     updateBackupInfo();
-    showToast(`${added} Bewertungen wiederhergestellt`);
+    ensureSpotNames();
+    showToast(`${added} ${added === 1 ? 'Bewertung' : 'Bewertungen'}` +
+      (photoCount ? ` und ${photoCount} ${photoCount === 1 ? 'Foto' : 'Fotos'}` : '') + ' wiederhergestellt');
   } catch {
     showToast('Datei konnte nicht gelesen werden');
   }
@@ -915,6 +1247,7 @@ const ratingsReady = loadRatings();
 (async () => {
   await ratingsReady;
   renderRatings();
+  ensureSpotNames();
   persistent = await requestPersistentStorage();
   updateBackupInfo();
 })();

@@ -72,12 +72,21 @@
     <div id="analysis-list" class="analysis-list"></div>
   </section>
 
+  <div id="photo-viewer" class="photo-viewer" hidden>
+    <img id="photo-viewer-img" alt="Foto">
+    <div class="photo-viewer-actions">
+      <button id="photo-viewer-delete" class="danger">Löschen</button>
+      <button id="photo-viewer-close">Schließen</button>
+    </div>
+  </div>
+
   <div id="toast" class="toast" hidden></div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
           integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   <script src="moon.js"></script>
   <script src="conditions.js"></script>
+  <script src="places.js"></script>
   <script src="app.js"></script>
   <script src="analysis.js"></script>
 </body>

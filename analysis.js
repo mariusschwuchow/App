@@ -256,6 +256,8 @@ function recommendationLabel(r) {
 
 function spotDescription(result) {
   const parts = [];
+  const name = spotName(result.key);
+  if (name) parts.push(`<b class="analysis-name">${escapeHtml(name)}</b>`);
   const water = result.visits.map((v) => v.conditions && v.conditions.waterLevel && v.conditions.waterLevel.water)
     .find(Boolean);
   if (water) parts.push(escapeHtml(water));

@@ -66,11 +66,26 @@ Mit dem Fischfilter (Barsch, Zander, Hecht) werden nur Spots gezeigt, an denen d
 schon gut lief. Spots ohne Besuche mit Wetterdaten fehlen in der Analyse. Der Wasserstand
 fließt nicht ein, weil es dafür keine Vorhersage gibt.
 
+## Spot-Namen
+
+Jeder Spot bekommt automatisch den Namen des nächstgelegenen Orts bzw. Ortsteils, z. B.
+„Holweide, Köln“. Der Name kommt von Nominatim (OpenStreetMap), wird einmalig abgefragt
+und beim Spot gespeichert. Ohne Netz wird er beim nächsten Start nachgeholt.
+
 ## Fischarten und Notizen
 
 Bei jedem Besuch kann man ankreuzen, welche Fischart dort gut lief (**Barsch**,
-**Zander**, **Hecht**, auch mehrere) und **Notizen** eintragen. Beides wird sofort
-gespeichert und ist in der Sicherungsdatei enthalten.
+**Zander**, **Hecht**, auch mehrere), für jede Art die **Größe** (1–150 cm, Schieberegler
+plus −/+ für zentimetergenaues Einstellen) angeben und **Notizen** eintragen. Alles wird
+sofort gespeichert und ist in der Sicherungsdatei enthalten.
+
+## Fotos
+
+Bei jedem Besuch lassen sich über **„+ Foto hinzufügen“** Bilder aus der Foto-App (oder
+direkt von der Kamera) anheften, auch mehrere auf einmal. Sie werden auf max. 1600 px
+verkleinert und in IndexedDB gespeichert. Antippen öffnet ein Foto groß, dort kann es auch
+gelöscht werden. Die Sicherungsdatei enthält die Fotos; sie wird dadurch entsprechend
+größer.
 
 ## Wetter, Luftdruck und Wasserstand
 
