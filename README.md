@@ -66,6 +66,12 @@ Mit dem Fischfilter (Barsch, Zander, Hecht) werden nur Spots gezeigt, an denen d
 schon gut lief. Spots ohne Besuche mit Wetterdaten fehlen in der Analyse. Der Wasserstand
 fließt nicht ein, weil es dafür keine Vorhersage gibt.
 
+## In Apple Karten öffnen
+
+Jeder Spot (und jede Karte in der Spot-Analyse) hat den Button **„In Apple Karten
+öffnen“**. Auf dem iPhone öffnet sich die Karten-App mit einer Stecknadel am Spot, von dort
+lässt sich direkt die Route starten.
+
 ## Spot-Namen
 
 Jeder Spot bekommt automatisch den Namen des nächstgelegenen Orts bzw. Ortsteils, z. B.

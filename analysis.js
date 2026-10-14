@@ -310,7 +310,7 @@ function renderAnalysisResults(results, skipped) {
       map.setView([r.lat, r.lng], Math.max(map.getZoom(), 15));
       openSpot(r.key);
     });
-    card.appendChild(show);
+    card.append(show, buildAppleMapsLink(r.key));
     analysisList.appendChild(card);
   });
   if (skipped) {

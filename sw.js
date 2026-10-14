@@ -1,4 +1,4 @@
-const CACHE = 'standort-bewertung-v10';
+const CACHE = 'standort-bewertung-v11';
 const ASSETS = ['./', 'index.html', 'style.css', 'moon.js', 'conditions.js', 'places.js', 'app.js', 'analysis.js', 'manifest.webmanifest', 'icon.svg'];
 
 self.addEventListener('install', (e) => {

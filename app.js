@@ -782,7 +782,7 @@ function buildSpotPopup(key, expandId) {
     list.appendChild(buildVisit(v, visits.length === 1 || v.id === expandId));
   }
 
-  popup.append(header, add, list);
+  popup.append(header, buildAppleMapsLink(key), add, list);
 
   if (visits.length > 1) {
     const delSpot = document.createElement('button');
@@ -843,6 +843,31 @@ async function ensureSpotNames() {
     }).catch(() => { /* offline o. Ä.: beim nächsten Start erneut versuchen */ })
       .finally(() => namingSpots.delete(key));
   }
+}
+
+// Link, der den Spot in Apple Karten öffnet (auf dem iPhone in der Karten-App,
+// sonst auf maps.apple.com). Dort lässt sich direkt eine Route starten.
+function appleMapsUrl(key) {
+  const { lat, lng } = spotVisits(key)[0];
+  const params = new URLSearchParams({
+    ll: `${lat.toFixed(6)},${lng.toFixed(6)}`,
+    q: spotName(key) || 'Angel-Spot',
+  });
+  return `https://maps.apple.com/?${params}`;
+}
+
+function buildAppleMapsLink(key) {
+  const link = document.createElement('a');
+  link.className = 'apple-maps-link';
+  link.href = appleMapsUrl(key);
+  link.target = '_blank';
+  link.rel = 'noopener';
+  link.textContent = 'In Apple Karten öffnen';
+  link.addEventListener('click', (e) => {
+    L.DomEvent.stopPropagation(e);
+    link.href = appleMapsUrl(key); // aktueller Name, falls er erst nachträglich ermittelt wurde
+  });
+  return link;
 }
 
 // Lädt Vorschaubilder nur für aufgeklappte Besuche im geöffneten Popup.

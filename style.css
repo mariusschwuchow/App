@@ -555,3 +555,19 @@ html, body {
 }
 
 .photo-viewer-actions .danger { background: #cf222e; color: #fff; }
+
+.apple-maps-link {
+  display: block;
+  margin: 8px 0 0;
+  padding: 8px;
+  border: 1px solid #1f6feb;
+  border-radius: 8px;
+  background: #fff;
+  color: #1f6feb !important;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+  text-decoration: none;
+}
+
+.apple-maps-link::before { content: "🧭 "; }
