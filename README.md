@@ -85,6 +85,14 @@ Bei jedem Besuch kann man ankreuzen, welche Fischart dort gut lief (**Barsch**,
 plus −/+ für zentimetergenaues Einstellen) angeben und **Notizen** eintragen. Alles wird
 sofort gespeichert und ist in der Sicherungsdatei enthalten.
 
+## Gewässertyp
+
+Unter den Fischarten lässt sich der **Gewässertyp** wählen: Großgewässer, Meer, Polder,
+Fluss, Kanal, See (auch mehrere, z. B. Fluss + Großgewässer). Er gilt für den ganzen Spot:
+Eine Änderung in einem Besuch wird bei allen Besuchen des Spots übernommen, neue Besuche
+erben ihn, und er steht oben im Spot. In der Spot-Analyse kann nach Gewässertyp gefiltert
+werden.
+
 ## Fotos
 
 Bei jedem Besuch lassen sich über **„+ Foto hinzufügen“** Bilder aus der Foto-App (oder

@@ -202,6 +202,8 @@ const analysisDays = document.getElementById('analysis-days');
 const analysisFish = document.getElementById('analysis-fish');
 let analysisDay = 0;
 let analysisFishFilter = null;
+let analysisWaterFilter = null;
+const analysisWater = document.getElementById('analysis-water');
 
 function dayLabel(offset) {
   const d = new Date();
@@ -227,6 +229,15 @@ function renderAnalysisControls() {
     b.setAttribute('aria-pressed', String(key === analysisFishFilter));
     b.addEventListener('click', () => { analysisFishFilter = key; runAnalysis(); });
     analysisFish.appendChild(b);
+  });
+  analysisWater.innerHTML = '';
+  [[null, 'Alle Gewässer'], ...Object.entries(WATER_TYPES)].forEach(([key, label]) => {
+    const b = document.createElement('button');
+    b.className = 'fish-chip';
+    b.textContent = label;
+    b.setAttribute('aria-pressed', String(key === analysisWaterFilter));
+    b.addEventListener('click', () => { analysisWaterFilter = key; runAnalysis(); });
+    analysisWater.appendChild(b);
   });
 }
 
@@ -272,8 +283,8 @@ function spotDescription(result) {
 function renderAnalysisResults(results, skipped) {
   analysisList.innerHTML = '';
   if (!results.length) {
-    analysisList.innerHTML = `<p class="analysis-empty">${analysisFishFilter
-      ? `Noch keine Besuche mit ${FISH[analysisFishFilter]} und Wetterdaten gespeichert.`
+    analysisList.innerHTML = `<p class="analysis-empty">${analysisFishFilter || analysisWaterFilter
+      ? 'Für diese Auswahl gibt es noch keine Besuche mit Wetterdaten.'
       : 'Noch keine Besuche mit Wetterdaten gespeichert. Bewerte Spots vor Ort oder trage Besuche mit Datum ein.'}</p>`;
     return;
   }
@@ -326,7 +337,9 @@ let analysisRun = 0;
 async function runAnalysis() {
   renderAnalysisControls();
   const run = ++analysisRun;
-  const spots = allSpotKeys().map((key) => {
+  const spots = allSpotKeys()
+    .filter((key) => !analysisWaterFilter || spotWaterTypes(key).includes(analysisWaterFilter))
+    .map((key) => {
     const visits = spotVisits(key);
     return { key, visits, lat: visits[0].lat, lng: visits[0].lng };
   });

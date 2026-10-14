@@ -1,5 +1,15 @@
 const STORAGE_KEY = 'standort-bewertungen';
 
+// Gewässertyp gehört zum Spot (wird bei allen Besuchen des Spots gespeichert).
+const WATER_TYPES = {
+  grossgewaesser: 'Großgewässer',
+  meer: 'Meer',
+  polder: 'Polder',
+  fluss: 'Fluss',
+  kanal: 'Kanal',
+  see: 'See',
+};
+
 const FISH = {
   barsch: 'Barsch',
   zander: 'Zander',
@@ -676,6 +686,47 @@ function fishSummary(visits) {
 }
 
 // Name des Spots = nächstgelegener Ort (bei einem der Besuche gespeichert).
+function spotWaterTypes(key) {
+  const v = spotVisits(key).find((e) => Array.isArray(e.waterTypes));
+  return v ? v.waterTypes : [];
+}
+
+// Auswahl des Gewässertyps (wie bei den Fischarten, Mehrfachauswahl möglich).
+// Änderungen gelten für den ganzen Spot und werden in allen Besuchen angezeigt.
+function buildWaterTypePicker(id) {
+  const wrap = document.createElement('div');
+  wrap.className = 'cond';
+  wrap.innerHTML = '<b>Gewässertyp:</b>';
+  const chips = document.createElement('div');
+  chips.className = 'fish-chips water-chips';
+  const key = spotKey(getEntry(id));
+  const selected = spotWaterTypes(key);
+  for (const [type, label] of Object.entries(WATER_TYPES)) {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'fish-chip water-chip';
+    chip.dataset.water = type;
+    chip.textContent = label;
+    chip.setAttribute('aria-pressed', String(selected.includes(type)));
+    chip.addEventListener('click', async () => {
+      const spot = spotKey(getEntry(id));
+      const types = new Set(spotWaterTypes(spot));
+      if (types.has(type)) types.delete(type); else types.add(type);
+      const waterTypes = Object.keys(WATER_TYPES).filter((t) => types.has(t));
+      for (const v of spotVisits(spot)) await updateRating({ ...getEntry(v.id), waterTypes });
+      // Auswahl in allen Besuchen dieses Spots aktualisieren
+      const content = popupContent(spot);
+      (content || wrap).querySelectorAll('.water-chip').forEach((c) => {
+        c.setAttribute('aria-pressed', String(types.has(c.dataset.water)));
+      });
+      refreshSpotSummary(spot);
+    });
+    chips.appendChild(chip);
+  }
+  wrap.appendChild(chips);
+  return wrap;
+}
+
 function spotName(key) {
   const v = spotVisits(key).find((e) => e.placeName);
   return v ? v.placeName : null;
@@ -699,6 +750,8 @@ function spotHeaderHtml(key) {
     : `<div class="spot-title">${ratingBadge(overall)}</div><div class="muted">1 Besuch</div>`;
   const fish = fishSummary(visits);
   if (fish) html += `<div class="cond"><b>Gut gefangen:</b> ${fish}</div>`;
+  const water = spotWaterTypes(key).map((t) => WATER_TYPES[t]).join(', ');
+  if (water) html += `<div class="cond"><b>Gewässer:</b> ${water}</div>`;
   return html;
 }
 
@@ -752,7 +805,8 @@ function buildVisit(entry, open) {
   });
   actions.appendChild(del);
 
-  visit.append(summary, when, details, buildFishPicker(id), buildNotesField(id), buildPhotoSection(id), actions);
+  visit.append(summary, when, details, buildFishPicker(id), buildWaterTypePicker(id),
+    buildNotesField(id), buildPhotoSection(id), actions);
   return visit;
 }
 
@@ -1114,6 +1168,8 @@ function buildEntry(rating, lat, lng, { accuracy = null, spotId, dated }) {
     entry.spotId = spotId;
     const name = spotName(spotId);
     if (name) entry.placeName = name;
+    const waterTypes = spotWaterTypes(spotId);
+    if (waterTypes.length) entry.waterTypes = waterTypes;
   }
   if (dated) {
     const visitedAt = visitDateInput.value || null; // JJJJ-MM-TT
