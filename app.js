@@ -499,14 +499,36 @@ function spotVisits(key) {
     .sort((a, b) => (visitTime(b) ?? -Infinity) - (visitTime(a) ?? -Infinity));
 }
 
+// Von Freunden übernommener Spot: Platzhalter-Eintrag ohne Bewertung (kind „shared-spot“)
+// mit Position, Name, Gewässertyp und optional der Zusammenfassung des Freundes.
+function isSharedSpot(entry) {
+  return Boolean(entry) && entry.kind === 'shared-spot';
+}
+
+// Alle Einträge eines Spots: eigene Besuche und ggf. der Platzhalter eines geteilten Spots.
+function spotEntries(key) {
+  return ratings.filter((r) => spotKey(r) === key && (RATINGS[r.rating] || isSharedSpot(r)));
+}
+
+// Bezugseintrag für Position: erster eigener Besuch, sonst der Platzhalter.
+function spotAnchor(key) {
+  return spotVisits(key)[0] || spotEntries(key)[0];
+}
+
+function sharedInfo(key) {
+  const s = spotEntries(key).find(isSharedSpot);
+  return s ? s.shared || {} : null;
+}
+
 // Spots der Sparte `mode` (null = alle Sparten).
 function allSpotKeys(mode = currentMode) {
   return [...new Set(ratings
-    .filter((r) => RATINGS[r.rating] && (mode === null || entryMode(r) === mode))
+    .filter((r) => (RATINGS[r.rating] || isSharedSpot(r)) && (mode === null || entryMode(r) === mode))
     .map(spotKey))];
 }
 
 function overallRating(visits) {
+  if (!visits.length) return null;
   const avg = visits.reduce((sum, v) => sum + SCORES[v.rating], 0) / visits.length;
   return RATING_BY_SCORE[Math.min(4, Math.max(1, Math.round(avg)))];
 }
@@ -515,7 +537,7 @@ function overallRating(visits) {
 function nearbySpot(lat, lng) {
   let best = null;
   for (const key of allSpotKeys()) {
-    const v = spotVisits(key)[0];
+    const v = spotAnchor(key);
     const meters = distanceKm(lat, lng, v.lat, v.lng) * 1000;
     if (meters <= SAME_SPOT_RADIUS_M && (!best || meters < best.meters)) best = { key, meters, lat: v.lat, lng: v.lng };
   }
@@ -983,7 +1005,7 @@ function fishSummary(visits) {
 
 // Name des Spots = nächstgelegener Ort (bei einem der Besuche gespeichert).
 function spotWaterTypes(key) {
-  const v = spotVisits(key).find((e) => Array.isArray(e.waterTypes));
+  const v = spotEntries(key).find((e) => Array.isArray(e.waterTypes));
   return v ? v.waterTypes : [];
 }
 
@@ -1009,7 +1031,7 @@ function buildWaterTypePicker(id) {
       const types = new Set(spotWaterTypes(spot));
       if (types.has(type)) types.delete(type); else types.add(type);
       const waterTypes = Object.keys(WATER_TYPES).filter((t) => types.has(t));
-      for (const v of spotVisits(spot)) await updateRating({ ...getEntry(v.id), waterTypes });
+      for (const v of spotEntries(spot)) await updateRating({ ...getEntry(v.id), waterTypes });
       // Auswahl in allen Besuchen dieses Spots aktualisieren
       const content = popupContent(spot);
       (content || wrap).querySelectorAll('.water-chip').forEach((c) => {
@@ -1025,7 +1047,7 @@ function buildWaterTypePicker(id) {
 
 // Eigener Name (umbenannt) hat Vorrang vor dem automatisch ermittelten Ortsnamen.
 function spotName(key) {
-  const visits = spotVisits(key);
+  const visits = spotEntries(key);
   const custom = visits.find((e) => e.customName);
   if (custom) return custom.customName;
   const v = visits.find((e) => e.placeName);
@@ -1033,7 +1055,7 @@ function spotName(key) {
 }
 
 async function renameSpot(key) {
-  const visits = spotVisits(key);
+  const visits = spotEntries(key);
   const current = (visits.find((e) => e.customName) || {}).customName || '';
   const auto = (visits.find((e) => e.placeName) || {}).placeName || '';
   const input = prompt(`Name für diesen Spot${auto ? ` (leer = „${auto}“)` : ''}:`, current || auto);
@@ -1058,12 +1080,35 @@ function ratingBadge(key) {
   return `<span class="rating-badge" style="background:${RATINGS[key].color}">${RATINGS[key].label}</span>`;
 }
 
+// Zusammenfassung, die ein Freund beim Teilen mitgeschickt hat.
+function sharedSummaryHtml(info) {
+  const parts = [];
+  if (info.rating && RATINGS[info.rating]) {
+    parts.push(`${ratingBadge(info.rating)}${info.visits ? ` <span class="muted">aus ${info.visits} Besuchen</span>` : ''}`);
+  }
+  const fish = (info.fish || []).filter((f) => ALL_FISH[f.f])
+    .map((f) => `${ALL_FISH[f.f]}${f.n > 1 ? ` ${f.n}×` : ''}${f.max ? ` (max. ${f.max} cm)` : ''}`).join(', ');
+  if (fish) parts.push(`Gefangen: ${fish}`);
+  return parts.length ? parts.join('<br>') : '<span class="muted">nur der Ort</span>';
+}
+
 function spotHeaderHtml(key) {
   const visits = spotVisits(key);
   const overall = overallRating(visits);
   const name = spotName(key);
+  const shared = sharedInfo(key);
   let html = `<div class="spot-name">📍 ${name ? escapeHtml(name) : '<span class="muted">Ort wird ermittelt …</span>'}` +
     ' <button type="button" class="spot-rename" aria-label="Spot umbenennen">✎</button></div>';
+  if (!visits.length) {
+    html += '<div class="spot-title">🤝 Geteilter Spot</div><div class="muted">Noch kein eigener Besuch</div>';
+    if (shared) html += `<div class="cond shared-summary"><b>Vom Freund:</b><br>${sharedSummaryHtml(shared)}</div>`;
+    const water = spotWaterTypes(key).map((t) => WATER_TYPES[t]).join(', ');
+    if (water) html += `<div class="cond"><b>Gewässer:</b> ${water}</div>`;
+    const a = spotAnchor(key);
+    const sun = sunTimesHtml(new Date(), a.lat, a.lng);
+    if (sun) html += `<div class="cond"><b>Heute:</b> ${sun}</div>`;
+    return html;
+  }
   html += visits.length > 1
     ? `<div class="spot-title">Gesamt: ${ratingBadge(overall)}</div>` +
       `<div class="muted">${visits.length} Besuche: ` +
@@ -1079,6 +1124,9 @@ function spotHeaderHtml(key) {
   if (methods) html += `<div class="cond"><b>Methode:</b> ${methods}</div>`;
   const water = spotWaterTypes(key).map((t) => WATER_TYPES[t]).join(', ');
   if (water) html += `<div class="cond"><b>Gewässer:</b> ${water}</div>`;
+  if (shared && (shared.rating || (shared.fish || []).length)) {
+    html += `<div class="cond shared-summary"><b>🤝 Vom Freund geteilt:</b><br>${sharedSummaryHtml(shared)}</div>`;
+  }
   const sun = sunTimesHtml(new Date(), visits[0].lat, visits[0].lng);
   if (sun) html += `<div class="cond"><b>Heute:</b> ${sun}</div>`;
   return html;
@@ -1191,14 +1239,18 @@ function buildSpotPopup(key, expandId) {
     popup.appendChild(merge);
   }
 
-  if (visits.length > 1) {
+  const hasShared = spotEntries(key).some(isSharedSpot);
+  if (visits.length > 1 || hasShared) {
     const delSpot = document.createElement('button');
     delSpot.className = 'popup-delete spot-delete';
-    delSpot.textContent = 'Ganzen Spot löschen';
+    delSpot.textContent = visits.length ? 'Ganzen Spot löschen' : 'Geteilten Spot löschen';
     delSpot.addEventListener('click', async (e) => {
       L.DomEvent.stopPropagation(e);
-      if (!confirm(`Diesen Spot mit allen ${visits.length} Besuchen wirklich löschen?`)) return;
-      for (const v of spotVisits(key)) await deleteRating(v.id);
+      const question = visits.length
+        ? `Diesen Spot mit allen ${visits.length} ${visits.length === 1 ? 'Besuch' : 'Besuchen'} wirklich löschen?`
+        : 'Diesen geteilten Spot wirklich löschen?';
+      if (!confirm(question)) return;
+      for (const v of spotEntries(key)) await deleteRating(v.id);
       renderRatings();
       updateBackupInfo();
     });
@@ -1242,10 +1294,10 @@ async function ensureSpotNames() {
   for (const key of allSpotKeys(null)) {
     if (spotName(key) || namingSpots.has(key)) continue;
     namingSpots.add(key);
-    const { lat, lng } = spotVisits(key)[0];
+    const { lat, lng } = spotAnchor(key);
     queueReverseGeocode(lat, lng).then(async (name) => {
       if (!name) return;
-      for (const v of spotVisits(key)) await updateRating({ ...getEntry(v.id), placeName: name });
+      for (const v of spotEntries(key)) await updateRating({ ...getEntry(v.id), placeName: name });
       refreshSpotSummary(key);
     }).catch(() => { /* offline o. Ä.: beim nächsten Start erneut versuchen */ })
       .finally(() => namingSpots.delete(key));
@@ -1255,7 +1307,7 @@ async function ensureSpotNames() {
 // Link, der den Spot in Apple Karten öffnet (auf dem iPhone in der Karten-App,
 // sonst auf maps.apple.com). Dort lässt sich direkt eine Route starten.
 function appleMapsUrl(key) {
-  const { lat, lng } = spotVisits(key)[0];
+  const { lat, lng } = spotAnchor(key);
   const params = new URLSearchParams({
     ll: `${lat.toFixed(6)},${lng.toFixed(6)}`,
     q: spotName(key) || 'Angel-Spot',
@@ -1310,13 +1362,13 @@ document.getElementById('merge-cancel').addEventListener('click', stopMerge);
 // Alle Besuche von `source` wandern zu `target` (Position, Name und Gewässertyp des Ziels;
 // Gewässertypen beider Spots werden vereinigt).
 async function mergeSpots(source, target) {
-  const t = spotVisits(target)[0];
+  const t = spotAnchor(target);
   const waterTypes = Object.keys(WATER_TYPES)
     .filter((w) => spotWaterTypes(source).includes(w) || spotWaterTypes(target).includes(w));
-  const targetVisits = spotVisits(target);
+  const targetVisits = spotEntries(target);
   const custom = (targetVisits.find((e) => e.customName) || {}).customName;
   const place = (targetVisits.find((e) => e.placeName) || {}).placeName;
-  for (const v of [...spotVisits(source), ...targetVisits]) {
+  for (const v of [...spotEntries(source), ...targetVisits]) {
     const updated = { ...getEntry(v.id), spotId: target, lat: t.lat, lng: t.lng };
     if (waterTypes.length) updated.waterTypes = waterTypes;
     if (place) updated.placeName = place;
@@ -1331,8 +1383,8 @@ async function handleMergeTarget(target) {
   const source = mergeSource;
   if (!source || target === source) return;
   map.closePopup();
-  const a = spotVisits(source)[0];
-  const b = spotVisits(target)[0];
+  const a = spotAnchor(source);
+  const b = spotAnchor(target);
   const meters = Math.round(distanceKm(a.lat, a.lng, b.lat, b.lng) * 1000);
   const dist = meters >= 1000 ? `${(meters / 1000).toFixed(1).replace('.', ',')} km` : `${meters} m`;
   const n = spotVisits(source).length;
@@ -1363,20 +1415,26 @@ function renderRatings() {
   for (const key of allSpotKeys()) {
     if (!spotMatchesFilter(key)) continue;
     const visits = spotVisits(key);
-    const overall = RATINGS[overallRating(visits)];
-    const allManual = visits.every((v) => v.manual);
+    const anchor = spotAnchor(key);
+    const sharedOnly = !visits.length;
+    // Geteilter Spot ohne eigenen Besuch: grau bzw. Farbe der Bewertung des Freundes, gestrichelt.
+    const sharedRating = sharedOnly && (sharedInfo(key) || {}).rating;
+    const color = sharedOnly
+      ? (RATINGS[sharedRating] ? RATINGS[sharedRating].color : '#8a8f98')
+      : RATINGS[overallRating(visits)].color;
+    const allManual = !sharedOnly && visits.every((v) => v.manual);
     const count = visits.length > 1 ? visits.length : '';
-    const size = count ? 24 : 18;
+    const size = count || sharedOnly ? 24 : 18;
 
     const icon = L.divIcon({
       className: '',
-      html: `<div class="rating-dot${allManual ? ' manual' : ''}${count ? ' multi' : ''}" ` +
-        `style="background:${overall.color}">${count}</div>`,
+      html: `<div class="rating-dot${allManual ? ' manual' : ''}${count ? ' multi' : ''}${sharedOnly ? ' shared' : ''}" ` +
+        `style="background:${color}">${sharedOnly ? '🤝' : count}</div>`,
       iconSize: [size, size],
       iconAnchor: [size / 2, size / 2],
     });
 
-    const marker = L.marker([visits[0].lat, visits[0].lng], { icon })
+    const marker = L.marker([anchor.lat, anchor.lng], { icon })
       .bindPopup(buildSpotPopup(key), {
         maxWidth: 300,
         minWidth: 240,
@@ -1642,7 +1700,7 @@ function buildEntry(rating, lat, lng, { accuracy = null, spotId, dated }) {
   const entry = { id: newId(now), mode: currentMode, lat, lng, accuracy, rating, timestamp: now.toISOString() };
   if (spotId) {
     entry.spotId = spotId;
-    const visits = spotVisits(spotId);
+    const visits = spotEntries(spotId);
     const place = (visits.find((e) => e.placeName) || {}).placeName;
     const custom = (visits.find((e) => e.customName) || {}).customName;
     if (place) entry.placeName = place;
@@ -1685,9 +1743,9 @@ function saveCurrentRating(rating) {
 // Weiterer Besuch an einem vorhandenen Spot: ohne Datum = jetzt (aktuelle Daten),
 // mit Datum = vergangener Besuch (historische Daten).
 function saveVisitRating(rating) {
-  const visits = spotVisits(targetSpot);
-  if (!visits.length) return;
-  const { lat, lng } = visits[0];
+  const anchor = spotAnchor(targetSpot);
+  if (!anchor) return;
+  const { lat, lng } = anchor;
   const entry = buildEntry(rating, lat, lng, { spotId: targetSpot, dated: Boolean(visitDateInput.value) });
   saveEntry(entry, { fetchData: !entry.manual || Boolean(entry.visitedAt), openPopup: true });
 }
@@ -1739,8 +1797,9 @@ function writeStored(key, value) {
 }
 
 function updateBackupInfo() {
-  const count = ratings.length;
-  const byMode = (m) => ratings.filter((r) => entryMode(r) === m).length;
+  const own = ratings.filter((r) => RATINGS[r.rating]);
+  const count = own.length;
+  const byMode = (m) => own.filter((r) => entryMode(r) === m).length;
   const last = readStored(BACKUP_TIME_KEY);
   backupInfo.textContent =
     `${count} ${count === 1 ? 'Bewertung' : 'Bewertungen'} auf diesem Gerät ` +
@@ -1852,9 +1911,13 @@ function filterActive() {
 function spotMatchesFilter(key) {
   if (!filterActive()) return true;
   const visits = spotVisits(key);
-  if (mapFilter.fish && !visits.some((v) => (v.fish || []).includes(mapFilter.fish))) return false;
+  const shared = sharedInfo(key) || {};
+  const sharedFish = (shared.fish || []).map((f) => f.f);
+  if (mapFilter.fish && !visits.some((v) => (v.fish || []).includes(mapFilter.fish)) &&
+    !sharedFish.includes(mapFilter.fish)) return false;
   if (mapFilter.water && !spotWaterTypes(key).includes(mapFilter.water)) return false;
-  if (mapFilter.minScore && SCORES[overallRating(visits)] < mapFilter.minScore) return false;
+  const rating = overallRating(visits) || shared.rating;
+  if (mapFilter.minScore && (!rating || SCORES[rating] < mapFilter.minScore)) return false;
   return true;
 }
 
@@ -1987,7 +2050,7 @@ importInput.addEventListener('change', async () => {
     const list = Array.isArray(parsed) ? parsed : parsed.ratings;
     if (!Array.isArray(list)) throw new Error('Ungültiges Format');
     const valid = list.filter((r) =>
-      r && typeof r.id === 'string' && RATINGS[r.rating] &&
+      r && typeof r.id === 'string' && (RATINGS[r.rating] || isSharedSpot(r)) &&
       Number.isFinite(r.lat) && Number.isFinite(r.lng) && typeof r.timestamp === 'string')
       .map(normalizeEntry);
 

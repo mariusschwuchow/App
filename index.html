@@ -108,6 +108,7 @@
     <button id="analysis-open" class="analysis-open">Spot-Analyse: Wohin heute?</button>
     <button id="stats-open" class="stats-open">Fangstatistik</button>
     <button id="spot-list-open" class="spot-list-open">Spot-Liste</button>
+    <button id="paste-spot" class="paste-spot">Geteilten Spot einfügen</button>
     <div class="menu-label">Darstellung</div>
     <div id="theme-switch" class="fish-chips theme-switch"></div>
     <h2>Meine Daten</h2>
@@ -184,6 +185,39 @@
     <div class="photo-viewer-actions">
       <button id="photo-viewer-delete" class="danger">Löschen</button>
       <button id="photo-viewer-close">Schließen</button>
+    </div>
+  </div>
+
+  <div id="share-dialog" class="modal" hidden role="dialog" aria-labelledby="share-dialog-title">
+    <div class="modal-box">
+      <h2 id="share-dialog-title">Spot teilen</h2>
+      <p class="spot-name">📍 <span id="share-dialog-name"></span></p>
+      <p class="muted">Immer dabei: Position, Name, Gewässertyp und Raubfisch/Friedfisch.
+        Deine Besuche, Fänge, Notizen und Fotos bleiben privat.</p>
+      <label id="share-summary-label" class="check-row">
+        <input id="share-summary" type="checkbox">
+        <span>Zusammenfassung mitschicken<br><span class="muted">Gesamtbewertung, Anzahl Besuche, welche
+          Fische dort liefen (mit größter Größe)</span></span>
+      </label>
+      <div class="pick-actions">
+        <button id="share-dialog-cancel" class="secondary">Abbrechen</button>
+        <button id="share-dialog-send">Teilen</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="import-dialog" class="modal" hidden role="dialog" aria-labelledby="import-dialog-title">
+    <div class="modal-box">
+      <h2 id="import-dialog-title">🤝 Geteilter Spot</h2>
+      <div id="import-dialog-body"></div>
+      <p id="import-hint" class="muted import-hint">Du nutzt die App über das Symbol auf dem Home-Bildschirm?
+        Dann tippe auf „Für die App kopieren“ und füge den Spot dort im Menü ein – Safari und die App haben
+        getrennte Speicher.</p>
+      <div class="modal-actions">
+        <button id="import-copy" class="secondary">Für die App kopieren</button>
+        <button id="import-save">Spot übernehmen</button>
+        <button id="import-cancel" class="link-button">Abbrechen</button>
+      </div>
     </div>
   </div>
 

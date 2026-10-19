@@ -1,14 +1,95 @@
 // Spot-Liste, Ortssuche, Spot teilen und Export als Tabelle (CSV).
 
 // ---- Spot teilen ----
+// Der Link enthält den Spot im Fragment (#spot=…). Das Fragment wird nicht an den Server
+// geschickt; die Daten stehen nur in der Nachricht selbst.
 
-async function shareSpot(key) {
-  const v = spotVisits(key)[0];
-  if (!v) return;
+const SHARE_VERSION = 1;
+
+function encodeShare(obj) {
+  const bytes = new TextEncoder().encode(JSON.stringify(obj));
+  let bin = '';
+  bytes.forEach((b) => { bin += String.fromCharCode(b); });
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function decodeShare(code) {
+  const b64 = code.replace(/-/g, '+').replace(/_/g, '/');
+  const bin = atob(b64 + '==='.slice((b64.length + 3) % 4));
+  const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
+
+// Nur bekannte Felder mit gültigen Werten übernehmen (der Link kann von irgendwem kommen).
+function validateSharedSpot(p) {
+  if (!p || p.v !== SHARE_VERSION) return null;
+  const lat = Number(p.la);
+  const lng = Number(p.lo);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+  const spot = {
+    name: typeof p.n === 'string' ? p.n.trim().slice(0, 80) : '',
+    lat,
+    lng,
+    mode: MODES[p.m] ? p.m : 'raubfisch',
+    waterTypes: Array.isArray(p.w) ? p.w.filter((w) => WATER_TYPES[w]) : [],
+    summary: null,
+  };
+  if (p.s && typeof p.s === 'object') {
+    spot.summary = {
+      rating: RATINGS[p.s.r] ? p.s.r : null,
+      visits: Number.isInteger(p.s.c) && p.s.c > 0 ? Math.min(p.s.c, 9999) : null,
+      fish: Array.isArray(p.s.f) ? p.s.f
+        .filter((f) => f && ALL_FISH[f.f])
+        .map((f) => ({
+          f: f.f,
+          n: Number.isInteger(f.n) && f.n > 0 ? Math.min(f.n, 9999) : 1,
+          max: Number.isFinite(f.max) && f.max > 0 && f.max <= 300 ? Math.round(f.max) : null,
+        })) : [],
+    };
+  }
+  return spot;
+}
+
+function sharePayload(key, withSummary) {
+  const a = spotAnchor(key);
+  const payload = {
+    v: SHARE_VERSION,
+    n: spotName(key) || '',
+    la: Math.round(a.lat * 1e5) / 1e5,
+    lo: Math.round(a.lng * 1e5) / 1e5,
+    m: entryMode(a),
+    w: spotWaterTypes(key),
+  };
+  const visits = spotVisits(key);
+  if (withSummary && visits.length) {
+    const fish = {};
+    for (const v of visits) {
+      for (const f of v.fish || []) {
+        const catches = (v.catches || []).filter((c) => c.fish === f);
+        const sizes = [...catches.map((c) => c.size), v.fishSizes && v.fishSizes[f]].filter(Number.isFinite);
+        if (!fish[f]) fish[f] = { f, n: 0, max: null };
+        fish[f].n += catches.length || 1;
+        if (sizes.length) fish[f].max = Math.max(fish[f].max || 0, ...sizes);
+      }
+    }
+    payload.s = { r: overallRating(visits), c: visits.length, f: Object.values(fish) };
+  }
+  return payload;
+}
+
+function shareLink(payload) {
+  return `${location.origin}${location.pathname}#spot=${encodeShare(payload)}`;
+}
+
+async function shareSpot(key, withSummary) {
+  const a = spotAnchor(key);
+  if (!a) return;
   const name = spotName(key) || 'Angel-Spot';
-  const coords = `${v.lat.toFixed(6)}, ${v.lng.toFixed(6)}`;
-  const text = `${name}\n${coords}\nApple Karten: ${appleMapsUrl(key)}\n` +
-    `Google Maps: https://maps.google.com/?q=${v.lat.toFixed(6)},${v.lng.toFixed(6)}`;
+  const link = shareLink(sharePayload(key, withSummary));
+  const text = `🎣 Angel-Spot „${name}“\n` +
+    `In der App übernehmen: ${link}\n` +
+    `Apple Karten: ${appleMapsUrl(key)}\n` +
+    `Google Maps: https://maps.google.com/?q=${a.lat.toFixed(6)},${a.lng.toFixed(6)}`;
   if (navigator.share) {
     try {
       await navigator.share({ title: name, text });
@@ -19,11 +100,35 @@ async function shareSpot(key) {
   }
   try {
     await navigator.clipboard.writeText(text);
-    showToast('Spot-Daten in die Zwischenablage kopiert');
+    showToast('Spot-Nachricht in die Zwischenablage kopiert');
   } catch {
-    prompt('Spot-Daten zum Kopieren:', text.replace(/\n/g, ' | '));
+    prompt('Spot-Link zum Kopieren:', link);
   }
 }
+
+// Dialog vor dem Teilen: nur der Ort oder zusätzlich die Zusammenfassung.
+const shareDialog = document.getElementById('share-dialog');
+const shareSummary = document.getElementById('share-summary');
+let shareKey = null;
+
+function openShareDialog(key) {
+  shareKey = key;
+  const hasVisits = spotVisits(key).length > 0;
+  shareSummary.checked = false;
+  shareSummary.disabled = !hasVisits;
+  document.getElementById('share-dialog-name').textContent = spotName(key) || 'Angel-Spot';
+  document.getElementById('share-summary-label').classList.toggle('disabled', !hasVisits);
+  map.closePopup();
+  shareDialog.hidden = false;
+}
+
+document.getElementById('share-dialog-send').addEventListener('click', () => {
+  const key = shareKey;
+  const withSummary = shareSummary.checked;
+  shareDialog.hidden = true;
+  if (key) shareSpot(key, withSummary); // direkt im Tipp: Teilen-Menü braucht eine frische Nutzeraktion
+});
+document.getElementById('share-dialog-cancel').addEventListener('click', () => { shareDialog.hidden = true; });
 
 function buildShareButton(key) {
   const b = document.createElement('button');
@@ -32,10 +137,152 @@ function buildShareButton(key) {
   b.textContent = 'Spot teilen';
   b.addEventListener('click', (e) => {
     L.DomEvent.stopPropagation(e);
-    shareSpot(key);
+    openShareDialog(key);
   });
   return b;
 }
+
+// ---- Geteilten Spot empfangen ----
+
+const importDialog = document.getElementById('import-dialog');
+let incomingSpot = null;
+
+function isStandalone() {
+  return window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
+}
+
+function showImportDialog(spot, link) {
+  incomingSpot = { spot, link };
+  const water = spot.waterTypes.map((w) => WATER_TYPES[w]).join(', ');
+  document.getElementById('import-dialog-body').innerHTML =
+    `<div class="spot-name">📍 ${escapeHtml(spot.name || 'Angel-Spot')}</div>` +
+    `<div class="muted">${MODES[spot.mode].icon} ${MODES[spot.mode].label}${water ? ` · ${water}` : ''}</div>` +
+    (spot.summary ? `<div class="cond shared-summary">${sharedSummaryHtml(spot.summary)}</div>` : '');
+  // Auf dem iPhone öffnen Links in Safari, nicht in der App vom Home-Bildschirm (getrennter
+  // Speicher). Dann zusätzlich „Für die App kopieren“ anbieten.
+  const inBrowser = !isStandalone();
+  document.getElementById('import-copy').hidden = !inBrowser;
+  document.getElementById('import-hint').hidden = !inBrowser;
+  importDialog.hidden = false;
+}
+
+function closeImportDialog() {
+  importDialog.hidden = true;
+  incomingSpot = null;
+}
+
+async function importSharedSpot(spot) {
+  if (spot.mode !== currentMode) setMode(spot.mode);
+  const near = nearbySpot(spot.lat, spot.lng);
+  const now = new Date();
+  // Schon einmal übernommen: vorhandene Infos des Freundes aktualisieren statt doppelt speichern.
+  const existing = near && spotEntries(near.key).find(isSharedSpot);
+  if (existing) {
+    await updateRating({ ...existing, shared: { ...(spot.summary || {}), receivedAt: now.toISOString() } });
+    renderRatings();
+    map.setView([existing.lat, existing.lng], Math.max(map.getZoom(), 15));
+    openSpot(near.key);
+    showToast('Diesen Spot hattest du schon – Infos aktualisiert');
+    return;
+  }
+  const entry = {
+    id: newId(now),
+    kind: 'shared-spot',
+    mode: spot.mode,
+    lat: near ? near.lat : spot.lat,
+    lng: near ? near.lng : spot.lng,
+    timestamp: now.toISOString(),
+    shared: { ...(spot.summary || {}), receivedAt: now.toISOString() },
+  };
+  if (near) {
+    entry.spotId = near.key; // gleicher Platz wie ein eigener Spot: Infos dort anhängen
+  } else {
+    if (spot.name) entry.customName = spot.name;
+    if (spot.waterTypes.length) entry.waterTypes = spot.waterTypes;
+  }
+  try {
+    await addRatings([entry]);
+  } catch {
+    showToast('Spot konnte nicht gespeichert werden');
+    return;
+  }
+  renderRatings();
+  updateBackupInfo();
+  ensureSpotNames();
+  const key = spotKey(entry);
+  map.setView([entry.lat, entry.lng], Math.max(map.getZoom(), 15));
+  openSpot(key);
+  showToast(near ? 'Spot liegt bei einem deiner Spots – Infos dort ergänzt' : 'Geteilter Spot gespeichert');
+}
+
+document.getElementById('import-save').addEventListener('click', async () => {
+  if (!incomingSpot) return;
+  const { spot } = incomingSpot;
+  closeImportDialog();
+  await importSharedSpot(spot);
+});
+
+document.getElementById('import-copy').addEventListener('click', async () => {
+  if (!incomingSpot) return;
+  const { link } = incomingSpot;
+  try {
+    await navigator.clipboard.writeText(link);
+    closeImportDialog();
+    alert('Kopiert! Öffne jetzt die App über das Symbol auf dem Home-Bildschirm und tippe im Menü ☰ auf ' +
+      '„Geteilten Spot einfügen“.');
+  } catch {
+    prompt('Diesen Link kopieren und in der App unter ☰ → „Geteilten Spot einfügen“ einfügen:', link);
+  }
+});
+document.getElementById('import-cancel').addEventListener('click', closeImportDialog);
+
+function spotFromText(text) {
+  const m = /#spot=([A-Za-z0-9_-]+)/.exec(text || '');
+  if (!m) return null;
+  try {
+    return validateSharedSpot(decodeShare(m[1]));
+  } catch {
+    return null;
+  }
+}
+
+// Menü: Link aus der Zwischenablage lesen (auf dem iPhone erscheint dafür „Einfügen“).
+document.getElementById('paste-spot').addEventListener('click', async () => {
+  document.getElementById('backup-panel').hidden = true;
+  let text = '';
+  try {
+    text = await navigator.clipboard.readText();
+  } catch { /* kein Zugriff: manuell einfügen lassen */ }
+  let spot = spotFromText(text);
+  if (!spot) {
+    const manual = prompt('Geteilten Spot-Link hier einfügen:');
+    if (manual === null) return;
+    text = manual;
+    spot = spotFromText(manual);
+  }
+  if (!spot) {
+    alert('In der Zwischenablage ist kein geteilter Spot. Kopiere zuerst den Link aus der Nachricht.');
+    return;
+  }
+  showImportDialog(spot, text);
+});
+
+// Beim Öffnen eines geteilten Links (#spot=…) den Dialog zeigen und das Fragment entfernen.
+async function handleIncomingShare() {
+  const spot = spotFromText(location.hash);
+  if (!location.hash.includes('spot=')) return;
+  history.replaceState(null, '', location.pathname + location.search);
+  if (!spot) {
+    showToast('Der geteilte Link ist ungültig oder unvollständig');
+    return;
+  }
+  await ratingsReady;
+  showImportDialog(spot, shareLink({ v: SHARE_VERSION, n: spot.name, la: spot.lat, lo: spot.lng, m: spot.mode,
+    w: spot.waterTypes, ...(spot.summary ? { s: { r: spot.summary.rating, c: spot.summary.visits, f: spot.summary.fish } } : {}) }));
+}
+
+window.addEventListener('hashchange', handleIncomingShare);
+handleIncomingShare();
 
 // ---- Spot-Liste ----
 
@@ -56,10 +303,11 @@ function renderSpotList() {
 
   const items = allSpotKeys().map((key) => {
     const visits = spotVisits(key);
+    const anchor = spotAnchor(key);
     const overall = overallRating(visits);
     const dist = currentPosition
-      ? distanceKm(currentPosition.lat, currentPosition.lng, visits[0].lat, visits[0].lng) : null;
-    const avgScore = visits.reduce((s, v) => s + SCORES[v.rating], 0) / visits.length;
+      ? distanceKm(currentPosition.lat, currentPosition.lng, anchor.lat, anchor.lng) : null;
+    const avgScore = visits.length ? visits.reduce((s, v) => s + SCORES[v.rating], 0) / visits.length : 0;
     return { key, visits, overall, dist, avgScore, last: lastVisitTime(visits), name: spotName(key) || 'Spot' };
   });
   if (!items.length) {
@@ -81,7 +329,8 @@ function renderSpotList() {
     const fish = fishSummary(it.visits);
     const water = spotWaterTypes(it.key).map((t) => WATER_TYPES[t]).join(', ');
     card.innerHTML =
-      `<div class="spot-card-head"><b>${escapeHtml(it.name)}</b> ${ratingBadge(it.overall)}</div>` +
+      `<div class="spot-card-head"><b>${escapeHtml(it.name)}</b> ` +
+      `${it.overall ? ratingBadge(it.overall) : '<span class="rating-badge shared-badge">🤝 Geteilt</span>'}</div>` +
       `<div class="muted">${it.visits.length} ${it.visits.length === 1 ? 'Besuch' : 'Besuche'}` +
       (it.last ? ` · zuletzt ${new Date(it.last).toLocaleDateString('de-DE')}` : '') +
       (it.dist !== null ? ` · ${it.dist < 10 ? it.dist.toFixed(1).replace('.', ',') : Math.round(it.dist)} km` : '') +
@@ -95,7 +344,7 @@ function renderSpotList() {
     show.textContent = 'Auf der Karte zeigen';
     show.addEventListener('click', () => {
       spotListEl.hidden = true;
-      const v = it.visits[0];
+      const v = spotAnchor(it.key);
       map.setView([v.lat, v.lng], Math.max(map.getZoom(), 15));
       openSpot(it.key);
     });

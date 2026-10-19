@@ -380,7 +380,8 @@ async function runAnalysis() {
     .filter((key) => !analysisWaterFilter || spotWaterTypes(key).includes(analysisWaterFilter))
     .map((key) => {
     const visits = spotVisits(key);
-    return { key, visits, lat: visits[0].lat, lng: visits[0].lng };
+    const anchor = spotAnchor(key);
+    return { key, visits, lat: anchor.lat, lng: anchor.lng };
   });
   const withData = spots.filter((s) => s.visits.some(visitFeatures));
   const skipped = spots.length - withData.length;

@@ -1,4 +1,4 @@
-const CACHE = 'standort-bewertung-v18';
+const CACHE = 'standort-bewertung-v19';
 const ASSETS = ['./', 'index.html', 'style.css', 'moon.js', 'conditions.js', 'places.js', 'app.js', 'analysis.js', 'stats.js', 'session.js', 'view.js', 'tools.js', 'manifest.webmanifest', 'icon.svg',
   'vendor/leaflet/leaflet.js', 'vendor/leaflet/leaflet.css',
   'vendor/leaflet/images/layers.png', 'vendor/leaflet/images/layers-2x.png',

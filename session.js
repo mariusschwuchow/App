@@ -111,7 +111,7 @@ async function finishSession(rating) {
   };
   if (s.spotId) {
     entry.spotId = s.spotId;
-    const visits = spotVisits(s.spotId);
+    const visits = spotEntries(s.spotId);
     const place = (visits.find((e) => e.placeName) || {}).placeName;
     const custom = (visits.find((e) => e.customName) || {}).customName;
     const water = spotWaterTypes(s.spotId);

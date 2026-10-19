@@ -1094,3 +1094,63 @@ html, body {
 .spot-card-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; }
 .spot-card-actions .popup-add { grid-column: 1 / -1; margin: 0; }
 .spot-card-actions .apple-maps-link { margin: 0; }
+
+/* ---- Spot teilen / übernehmen ---- */
+
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 2800;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.4);
+  padding: 12px 12px calc(16px + env(safe-area-inset-bottom));
+}
+
+.modal[hidden] { display: none; }
+
+.modal-box {
+  width: 100%;
+  max-width: 420px;
+  background: #fff;
+  border-radius: 16px;
+  padding: 16px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  font-size: 15px;
+}
+
+.modal-box h2 { margin: 0 0 8px; font-size: 18px; }
+.modal-box p { margin: 6px 0; }
+.modal-box .muted { color: #57606a; font-size: 13px; }
+
+.check-row { display: flex; gap: 10px; align-items: flex-start; margin: 12px 0; cursor: pointer; }
+.check-row input { width: 22px; height: 22px; margin-top: 2px; flex: none; }
+.check-row.disabled { opacity: 0.5; }
+
+.modal-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+
+.modal-actions button:not(.link-button) {
+  border: none;
+  border-radius: 10px;
+  padding: 13px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+  background: #1a7f37;
+  cursor: pointer;
+}
+
+.modal-actions .secondary { background: #1f6feb !important; }
+.modal-actions .link-button { align-self: center; }
+.modal-actions button[hidden] { display: none; }
+.import-hint[hidden] { display: none; }
+
+.shared-summary { background: #ddf4ff; border-radius: 8px; padding: 6px 8px; }
+.shared-badge { background: #8a8f98; }
+.rating-dot.shared { border-style: dashed; border-color: #24292f; width: 24px; height: 24px; display: flex;
+  align-items: center; justify-content: center; font-size: 12px; }
+.paste-spot { background: #6639ba !important; margin-bottom: 6px; }
+
+:root[data-theme="dark"] .modal-box { background: #161b22; color: #e6edf3; }
+:root[data-theme="dark"] .shared-summary { background: #0c2d6b; }

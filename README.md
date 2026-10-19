@@ -76,10 +76,29 @@ sind dort besser zu erkennen). Beides bleibt gespeichert.
 - Menü → **Spot-Liste**: alle Spots der Sparte, sortierbar nach Bewertung, Entfernung,
   letztem Besuch oder Name.
 - **🔍** rechts: Ort, Gewässer oder Adresse suchen (Nominatim) und dorthin springen.
-- **„Spot teilen“** im Spot und in der Liste: Name, Koordinaten, Apple-Karten- und
-  Google-Maps-Link über das Teilen-Menü (sonst in die Zwischenablage).
+- **„Spot teilen“** im Spot und in der Liste – siehe „Spots mit Freunden teilen“.
 - Menü → **Als Tabelle exportieren (CSV)**: eine Zeile je Besuch mit allen Werten
   (Semikolon-getrennt, Umlaute korrekt in Excel/Numbers).
+
+## Spots mit Freunden teilen
+
+**Senden:** Im Spot auf **„Spot teilen“** tippen. Immer dabei sind Position, Name,
+Gewässertyp und Sparte; per Häkchen zusätzlich eine **Zusammenfassung** (Gesamtbewertung,
+Anzahl Besuche, Fischarten mit größter Größe). Besuche, Fänge, Notizen und Fotos werden nie
+geteilt. Die Nachricht enthält einen App-Link sowie Apple-Karten- und Google-Maps-Links.
+
+**Empfangen:** Der App-Link öffnet die App mit **„Spot übernehmen“**. Der Spot erscheint als
+🤝 (gestrichelter Punkt) mit den Infos des Freundes; eigene Besuche lassen sich wie gewohnt
+ergänzen. Liegt er innerhalb von 50 m bei einem eigenen Spot, werden die Infos dort
+angehängt; erneutes Übernehmen aktualisiert sie.
+
+**iPhone mit App auf dem Home-Bildschirm:** Links öffnen immer in Safari, das einen
+getrennten Speicher hat. Dort **„Für die App kopieren“** tippen, dann die App öffnen und im
+Menü **„Geteilten Spot einfügen“** wählen.
+
+Technisch steckt der Spot im Fragment des Links (`#spot=…`, Base64-JSON); das Fragment wird
+nicht an den Server übertragen. Beim Empfang werden nur bekannte Felder mit gültigen Werten
+übernommen.
 
 ## Raubfisch und Friedfisch
 
