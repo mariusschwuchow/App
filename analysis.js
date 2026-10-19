@@ -96,7 +96,7 @@ async function fetchSpotForecasts(points) {
     timeformat: 'unixtime',
     timezone: 'GMT',
   });
-  const raw = await fetchJson(`https://api.open-meteo.com/v1/forecast?${params}`);
+  const raw = await fetchJson(openMeteoUrl('forecast', params));
   const data = Array.isArray(raw) ? raw : [raw];
   forecastCache = { time: Date.now(), key, data };
   return data;

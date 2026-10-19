@@ -1154,3 +1154,16 @@ html, body {
 
 :root[data-theme="dark"] .modal-box { background: #161b22; color: #e6edf3; }
 :root[data-theme="dark"] .shared-summary { background: #0c2d6b; }
+
+/* ---- Quellen & Hinweise ---- */
+
+.about-open { background: #eaeef2 !important; color: #24292f !important; }
+.about .stat-section p { margin: 6px 0; line-height: 1.45; }
+.about-list { margin: 6px 0; padding-left: 18px; line-height: 1.45; }
+.about-list li { margin: 4px 0; }
+.about a { color: #0969da; }
+.source-note { font-size: 11px; color: #6e7781; margin-top: 8px; }
+
+:root[data-theme="dark"] .about-open { background: #21262d !important; color: #e6edf3 !important; }
+:root[data-theme="dark"] .about a { color: #58a6ff; }
+:root[data-theme="dark"] .source-note { color: #8b949e; }

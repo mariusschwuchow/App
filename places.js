@@ -15,7 +15,7 @@ async function reverseGeocode(lat, lng) {
     addressdetails: '1',
     'accept-language': 'de',
   });
-  const data = await fetchJson(`https://nominatim.openstreetmap.org/reverse?${params}`);
+  const data = await fetchJson(nominatimUrl('/reverse', params));
   const a = (data && data.address) || {};
   const local = a.suburb || a.village || a.hamlet || a.quarter || a.city_district ||
     a.borough || a.neighbourhood || a.town;

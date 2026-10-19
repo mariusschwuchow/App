@@ -90,7 +90,7 @@ async function fetchWeather(lat, lng) {
     timeformat: 'unixtime',
     timezone: 'GMT',
   });
-  const data = await fetchJson(`https://api.open-meteo.com/v1/forecast?${params}`);
+  const data = await fetchJson(openMeteoUrl('forecast', params));
   const c = data.current || {};
 
   const times = (data.hourly && data.hourly.time) || [];
@@ -169,10 +169,7 @@ async function fetchHistoricalWeather(lat, lng, target) {
     timeformat: 'unixtime',
     timezone: 'GMT',
   });
-  const base = recent
-    ? 'https://api.open-meteo.com/v1/forecast'
-    : 'https://archive-api.open-meteo.com/v1/archive';
-  const data = await fetchJson(`${base}?${params}`);
+  const data = await fetchJson(openMeteoUrl(recent ? 'forecast' : 'archive', params));
   const h = data.hourly || {};
   const times = h.time || [];
 
@@ -243,7 +240,7 @@ async function findNearestGauge(lat, lng, withCurrent) {
     includeCurrentMeasurement: String(withCurrent),
   });
   const stations = await fetchJson(
-    `https://www.pegelonline.wsv.de/webservices/rest-api/v2/stations.json?${params}`);
+    pegelonlineUrl('/stations.json', params));
 
   let nearest = null;
   for (const s of stations || []) {
@@ -291,7 +288,7 @@ async function fetchHistoricalWaterLevel(lat, lng, target) {
     end: new Date((target + 3 * 3600) * 1000).toISOString(),
   });
   const measurements = await fetchJson(
-    `https://www.pegelonline.wsv.de/webservices/rest-api/v2/stations/${encodeURIComponent(uuid)}/W/measurements.json?${params}`);
+    pegelonlineUrl(`/stations/${encodeURIComponent(uuid)}/W/measurements.json`, params));
 
   let best = null;
   for (const m of measurements || []) {
@@ -324,7 +321,7 @@ function fetchWaterTempStations() {
       includeTimeseries: 'true',
       includeCurrentMeasurement: 'true',
     });
-    const promise = fetchJson(`https://www.pegelonline.wsv.de/webservices/rest-api/v2/stations.json?${params}`);
+    const promise = fetchJson(pegelonlineUrl('/stations.json', params));
     promise.catch(() => { waterTempStationsCache = { time: 0, promise: null }; });
     waterTempStationsCache = { time: Date.now(), promise };
   }
@@ -362,7 +359,7 @@ async function fetchWaterTemperature(lat, lng, target = null) {
     end: new Date((target + 3 * 3600) * 1000).toISOString(),
   });
   const measurements = await fetchJson(
-    `https://www.pegelonline.wsv.de/webservices/rest-api/v2/stations/${encodeURIComponent(nearest.station.uuid)}/WT/measurements.json?${params}`);
+    pegelonlineUrl(`/stations/${encodeURIComponent(nearest.station.uuid)}/WT/measurements.json`, params));
   let best = null;
   for (const m of measurements || []) {
     const t = Date.parse(m.timestamp) / 1000;

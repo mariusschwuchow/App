@@ -116,6 +116,7 @@
     <button id="export-button">Sicherung erstellen</button>
     <button id="share-backup" class="share-backup" hidden>In Dateien / iCloud Drive sichern</button>
     <button id="csv-export" class="csv-export">Als Tabelle exportieren (CSV)</button>
+    <button id="about-open" class="about-open">Quellen, Lizenzen & Hinweise</button>
     <label class="import-label">
       Sicherung wiederherstellen
       <input id="import-input" type="file" accept="application/json,.json">
@@ -159,6 +160,8 @@
     <div id="analysis-fish" class="fish-chips analysis-fish"></div>
     <div id="analysis-water" class="fish-chips analysis-fish"></div>
     <div id="analysis-list" class="analysis-list"></div>
+    <p class="source-note">Vorhersage: Open-Meteo.com (CC BY 4.0), Wassertemperatur: PEGELONLINE (WSV) bzw. Schätzung.
+      Empfehlungen beruhen nur auf deinen Einträgen – ohne Gewähr, Sicherheit am Wasser geht vor.</p>
   </section>
 
   <section id="spot-list" class="analysis" hidden aria-label="Spot-Liste">
@@ -169,6 +172,65 @@
     <div class="filter-label">Sortieren nach</div>
     <div id="spot-list-sort" class="fish-chips analysis-fish"></div>
     <div id="spot-list-body"></div>
+  </section>
+
+  <section id="about" class="analysis about" hidden aria-label="Quellen, Lizenzen und Hinweise">
+    <header class="analysis-header">
+      <h2>Quellen &amp; Hinweise</h2>
+      <button id="about-close" class="analysis-close" aria-label="Schließen">&times;</button>
+    </header>
+
+    <section class="stat-section">
+      <h3>⚠️ Ohne Gewähr</h3>
+      <p>Wetter, Luftdruck, Vorhersagen, Wasserstände und Wassertemperaturen stammen aus öffentlichen
+        Diensten bzw. Modellen und können falsch, veraltet oder lückenhaft sein. Pegelwerte sind
+        ungeprüfte Rohdaten; die Wassertemperatur ist ohne Messpegel nur geschätzt. Spot-Empfehlungen
+        beruhen allein auf deinen eigenen Einträgen.</p>
+      <p><b>Sicherheit am Wasser geht vor:</b> Prüfe Hochwasser, Strömung, Wind, Gewitter und Eis
+        selbst und beachte Angelvorschriften, Schonzeiten und Mindestmaße deines Gewässers.</p>
+    </section>
+
+    <section class="stat-section">
+      <h3>Datenquellen</h3>
+      <ul class="about-list">
+        <li><b>Wetter, Luftdruck, Vorhersage:</b> <a href="https://open-meteo.com/" target="_blank" rel="noopener">Weather data by Open-Meteo.com</a>,
+          lizenziert unter <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>.</li>
+        <li><b>Wasserstand, Wassertemperatur:</b> <a href="https://www.pegelonline.wsv.de/" target="_blank" rel="noopener">PEGELONLINE</a>,
+          Wasserstraßen- und Schifffahrtsverwaltung des Bundes (WSV).</li>
+        <li><b>Karte:</b> © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap-Mitwirkende</a>
+          (Daten unter ODbL).</li>
+        <li><b>Ortsnamen und Suche:</b> <a href="https://nominatim.org/" target="_blank" rel="noopener">Nominatim</a> mit OpenStreetMap-Daten.</li>
+        <li><b>Luftbild:</b> © Esri, Maxar, Earthstar Geographics (Esri World Imagery).</li>
+      </ul>
+    </section>
+
+    <section class="stat-section">
+      <h3>Software &amp; Berechnungen</h3>
+      <ul class="about-list">
+        <li><b>Leaflet</b> 1.9.4 – BSD 2-Clause, © 2010–2023 Volodymyr Agafonkin, © 2010–2011 CloudMade.</li>
+        <li><b>Sonne &amp; Mond:</b> Verfahren nach <a href="https://github.com/mourner/suncalc" target="_blank" rel="noopener">SunCalc</a>
+          (BSD 2-Clause, © 2014 Vladimir Agafonkin) auf Basis der Formeln von Jean Meeus.</li>
+        <li><b>Wassertemperatur-Schätzung:</b> Faustformel ≈ 5 + 0,75 × Mittel der Lufttemperatur (7 Tage),
+          nach Stefan &amp; Preud'homme (1993) für Fließgewässer.</li>
+      </ul>
+      <p class="muted">Vollständige Lizenztexte: <a href="THIRD_PARTY_NOTICES.md" target="_blank" rel="noopener">THIRD_PARTY_NOTICES.md</a>
+        und <a href="vendor/leaflet/LICENSE" target="_blank" rel="noopener">Leaflet-Lizenz</a>.</p>
+    </section>
+
+    <section class="stat-section">
+      <h3>Deine Daten</h3>
+      <p>Spots, Besuche, Fänge, Notizen und Fotos werden nur auf diesem Gerät gespeichert und nicht an
+        uns übertragen. Für die Funktionen fragt die App bei diesen Diensten an; dabei werden deine
+        IP-Adresse und die jeweiligen <b>Koordinaten</b> übermittelt:</p>
+      <ul class="about-list">
+        <li>Open-Meteo – Wetter und Vorhersage für Spot/Standort</li>
+        <li>PEGELONLINE – Pegel und Wassertemperatur in der Nähe</li>
+        <li>Nominatim – Ortsname eines Spots, Text der Ortssuche</li>
+        <li>OpenStreetMap / Esri – Kartenausschnitte, die angezeigt werden</li>
+        <li>GitHub Pages – Laden der App selbst</li>
+      </ul>
+      <p class="muted">Geteilte Spots enthalten nur das, was du beim Teilen auswählst.</p>
+    </section>
   </section>
 
   <section id="stats" class="analysis" hidden aria-label="Fangstatistik">
@@ -225,6 +287,7 @@
 
   <!-- Leaflet 1.9.4 liegt lokal, damit die App auch ohne Netz startet -->
   <script src="vendor/leaflet/leaflet.js"></script>
+  <script src="config.js"></script>
   <script src="moon.js"></script>
   <script src="conditions.js"></script>
   <script src="places.js"></script>
@@ -232,6 +295,15 @@
   <script src="session.js"></script>
   <script src="view.js"></script>
   <script src="tools.js"></script>
+  <script>
+    document.getElementById('about-open').addEventListener('click', () => {
+      document.getElementById('backup-panel').hidden = true;
+      document.getElementById('about').hidden = false;
+    });
+    document.getElementById('about-close').addEventListener('click', () => {
+      document.getElementById('about').hidden = true;
+    });
+  </script>
   <script src="analysis.js"></script>
   <script src="stats.js"></script>
 </body>

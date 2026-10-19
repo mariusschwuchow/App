@@ -274,3 +274,25 @@ python3 -m http.server 8000
 Auf dem Handy am einfachsten über GitHub Pages (Settings → Pages → Branch auswählen) oder
 einen anderen HTTPS-Host. Im Browser-Menü „Zum Startbildschirm hinzufügen“ wählen, um sie
 wie eine App zu nutzen.
+
+## Quellen, Lizenzen und Hinweise
+
+Menü → **Quellen, Lizenzen & Hinweise** zeigt den Haftungshinweis, alle Datenquellen mit
+Pflichtangaben (u. a. „Weather data by Open-Meteo.com“, CC BY 4.0), die verwendete Software
+und welche Daten an welche Dienste gehen. Unter Wetterdaten im Spot und in der Analyse steht
+zusätzlich ein kurzer Quellen-/„ohne Gewähr“-Hinweis. Lizenztexte: `THIRD_PARTY_NOTICES.md`
+und `vendor/leaflet/LICENSE`.
+
+## Dienste wechseln (z. B. für kommerzielle Nutzung)
+
+Alle externen Dienste sind in **`config.js`** gebündelt (`SERVICES`):
+
+- **Open-Meteo:** `apiKey` eintragen → die App nutzt automatisch die Kunden-Server
+  (`customer-api…`) mit Schlüssel. Der kostenlose Zugang ist nur nicht-kommerziell erlaubt.
+- **PEGELONLINE:** `baseUrl`.
+- **Nominatim:** `baseUrl` (eigene oder kommerzielle Instanz), optional `contactEmail`.
+- **Karten:** `streetTiles` und `satelliteTiles` (URL, Quellenangabe, Zoomstufen).
+
+Für einen kommerziellen Betrieb müssen außerdem Hosting (GitHub Pages ist dafür nicht
+erlaubt), Kartenkacheln, Geocoding und Luftbild auf passende Anbieter umgestellt sowie
+Impressum und Datenschutzerklärung ergänzt werden.

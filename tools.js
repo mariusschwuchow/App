@@ -383,7 +383,7 @@ document.getElementById('search-form').addEventListener('submit', async (e) => {
   searchResults.innerHTML = '<li class="muted">Suche …</li>';
   try {
     const params = new URLSearchParams({ format: 'jsonv2', q, limit: '8', 'accept-language': 'de' });
-    const results = await fetchJson(`https://nominatim.openstreetmap.org/search?${params}`);
+    const results = await fetchJson(nominatimUrl('/search', params));
     searchResults.innerHTML = '';
     if (!results.length) {
       searchResults.innerHTML = '<li class="muted">Nichts gefunden.</li>';

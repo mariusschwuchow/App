@@ -83,9 +83,9 @@ const RATINGS = {
 
 const map = L.map('map', { zoomControl: false }).setView([51.1657, 10.4515], 6);
 L.control.zoom({ position: 'topright' }).addTo(map);
-const streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  maxZoom: 19,
-  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+const streetLayer = L.tileLayer(SERVICES.streetTiles.url, {
+  maxZoom: SERVICES.streetTiles.maxZoom,
+  attribution: SERVICES.streetTiles.attribution,
 }).addTo(map);
 
 const statusEl = document.getElementById('status');
@@ -380,6 +380,10 @@ function conditionsHtml(entry) {
     html += `<div class="cond muted">Kein Pegel im Umkreis von ${PEGEL_RADIUS_KM} km gefunden.</div>`;
   }
 
+  if (c.weather || c.waterLevel) {
+    html += '<div class="cond source-note">Quellen: Open-Meteo.com (CC BY 4.0)' +
+      (c.waterLevel || c.waterTemp ? ', PEGELONLINE (WSV)' : '') + ' · Angaben ohne Gewähr</div>';
+  }
   return html;
 }
 

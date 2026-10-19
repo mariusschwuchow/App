@@ -21,18 +21,16 @@ function applyTheme(theme) {
 
 // ---- Satellitenansicht (Esri World Imagery) ----
 
-const satelliteLayer = L.tileLayer(
-  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-    maxZoom: 19,
-    maxNativeZoom: 18,
-    attribution: 'Luftbild &copy; Esri, Maxar, Earthstar Geographics',
-  });
+const satelliteLayer = L.tileLayer(SERVICES.satelliteTiles.url, {
+  maxZoom: SERVICES.satelliteTiles.maxZoom,
+  maxNativeZoom: SERVICES.satelliteTiles.maxNativeZoom,
+  attribution: SERVICES.satelliteTiles.attribution,
+});
 // Ortsnamen und Grenzen über dem Luftbild zur Orientierung
-const satelliteLabels = L.tileLayer(
-  'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
-    maxZoom: 19,
-    maxNativeZoom: 18,
-  });
+const satelliteLabels = L.tileLayer(SERVICES.satelliteTiles.labelsUrl, {
+  maxZoom: SERVICES.satelliteTiles.maxZoom,
+  maxNativeZoom: SERVICES.satelliteTiles.maxNativeZoom,
+});
 const layerToggle = document.getElementById('layer-toggle');
 
 function applyLayer(kind) {

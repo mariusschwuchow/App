@@ -1,5 +1,5 @@
-const CACHE = 'standort-bewertung-v19';
-const ASSETS = ['./', 'index.html', 'style.css', 'moon.js', 'conditions.js', 'places.js', 'app.js', 'analysis.js', 'stats.js', 'session.js', 'view.js', 'tools.js', 'manifest.webmanifest', 'icon.svg',
+const CACHE = 'standort-bewertung-v20';
+const ASSETS = ['./', 'index.html', 'style.css', 'config.js', 'THIRD_PARTY_NOTICES.md', 'moon.js', 'conditions.js', 'places.js', 'app.js', 'analysis.js', 'stats.js', 'session.js', 'view.js', 'tools.js', 'manifest.webmanifest', 'icon.svg',
   'vendor/leaflet/leaflet.js', 'vendor/leaflet/leaflet.css',
   'vendor/leaflet/images/layers.png', 'vendor/leaflet/images/layers-2x.png',
   'vendor/leaflet/images/marker-icon.png', 'vendor/leaflet/images/marker-icon-2x.png',
