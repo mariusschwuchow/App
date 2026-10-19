@@ -20,7 +20,12 @@ const MODES = {
     fish: { barsch: 'Barsch', zander: 'Zander', hecht: 'Hecht' },
     baits: {
       gummifisch: 'Gummifisch', wobbler: 'Wobbler', spinner: 'Spinner', blinker: 'Blinker',
-      dropshot: 'Dropshot', jerkbait: 'Jerkbait', koederfisch: 'Köderfisch',
+      jerkbait: 'Jerkbait', spinnerbait: 'Spinnerbait', koederfisch: 'Köderfisch',
+    },
+    methods: {
+      jiggen: 'Jiggen', faulenzen: 'Faulenzen', dropshot: 'Dropshot', texasrig: 'Texas-Rig',
+      carolinarig: 'Carolina-Rig', twitchen: 'Twitchen/Jerken', vertikal: 'Vertikalangeln',
+      schleppen: 'Schleppen', ansitz: 'Ansitz',
     },
   },
   friedfisch: {
@@ -34,10 +39,26 @@ const MODES = {
       mais: 'Mais', boilie: 'Boilie', made: 'Made', wurm: 'Wurm', teig: 'Teig',
       pellet: 'Pellet', brot: 'Brot',
     },
+    methods: {
+      feeder: 'Feeder', methodfeeder: 'Method-Feeder', pose: 'Pose', grund: 'Grundangeln',
+      haar: 'Haar-Montage', stippen: 'Stippen',
+    },
   },
 };
 const ALL_FISH = { ...MODES.raubfisch.fish, ...MODES.friedfisch.fish };
 const ALL_BAITS = { ...MODES.raubfisch.baits, ...MODES.friedfisch.baits };
+const ALL_METHODS = { ...MODES.raubfisch.methods, ...MODES.friedfisch.methods };
+
+// Ältere Einträge hatten „Dropshot“ als Köder – es ist eine Angelmethode.
+function normalizeEntry(entry) {
+  if (!entry || !(entry.baits || []).includes('dropshot')) return entry;
+  const methods = new Set([...(entry.methods || []), 'dropshot']);
+  return {
+    ...entry,
+    baits: entry.baits.filter((b) => b !== 'dropshot'),
+    methods: Object.keys(ALL_METHODS).filter((m) => methods.has(m)),
+  };
+}
 
 const MODE_KEY = 'angel-sparte';
 let currentMode = 'raubfisch';
@@ -162,12 +183,17 @@ async function loadRatings() {
   for (const r of [...readLocalCopy(), ...(fromDb || [])]) {
     if (r && r.id) byId.set(r.id, r);
   }
-  ratings = [...byId.values()];
+  const migrated = new Set();
+  ratings = [...byId.values()].map((r) => {
+    const n = normalizeEntry(r);
+    if (n !== r) migrated.add(n.id);
+    return n;
+  });
   sortRatings();
 
-  // Beide Speicher auf denselben Stand bringen.
+  // Beide Speicher auf denselben Stand bringen (inkl. umgestellter Einträge).
   const dbIds = new Set((fromDb || []).map((r) => r.id));
-  const missingInDb = ratings.filter((r) => !dbIds.has(r.id));
+  const missingInDb = ratings.filter((r) => !dbIds.has(r.id) || migrated.has(r.id));
   if (missingInDb.length) {
     try {
       await dbRequest('readwrite', (store) => missingInDb.forEach((r) => store.put(r)));
@@ -660,31 +686,39 @@ function buildWaterTempInput(id) {
   return wrap;
 }
 
-// Köder (Mehrfachauswahl, je nach Sparte) plus optionale Details wie Farbe oder Größe.
-function buildBaitPicker(id) {
+// Mehrfachauswahl als Chips für ein Listenfeld eines Besuchs (Köder, Angelmethode).
+function buildChipPicker(id, { title, field, options, allOptions }) {
   const wrap = document.createElement('div');
   wrap.className = 'cond';
-  wrap.innerHTML = '<b>Köder:</b>';
+  wrap.innerHTML = `<b>${title}:</b>`;
   const chips = document.createElement('div');
   chips.className = 'fish-chips';
-  for (const [key, label] of Object.entries(MODES[entryMode(getEntry(id))].baits)) {
+  for (const [key, label] of Object.entries(options)) {
     const chip = document.createElement('button');
     chip.type = 'button';
     chip.className = 'fish-chip';
     chip.textContent = label;
-    chip.setAttribute('aria-pressed', String((getEntry(id).baits || []).includes(key)));
+    chip.setAttribute('aria-pressed', String((getEntry(id)[field] || []).includes(key)));
     chip.addEventListener('click', async () => {
       const current = getEntry(id);
       if (!current) return;
-      const baits = new Set(current.baits || []);
-      if (baits.has(key)) baits.delete(key); else baits.add(key);
-      chip.setAttribute('aria-pressed', String(baits.has(key)));
-      await updateRating({ ...getEntry(id), baits: Object.keys(ALL_BAITS).filter((b) => baits.has(b)) });
+      const set = new Set(current[field] || []);
+      if (set.has(key)) set.delete(key); else set.add(key);
+      chip.setAttribute('aria-pressed', String(set.has(key)));
+      await updateRating({ ...getEntry(id), [field]: Object.keys(allOptions).filter((k) => set.has(k)) });
       refreshSpotSummary(spotKey(getEntry(id)));
     });
     chips.appendChild(chip);
   }
+  wrap.appendChild(chips);
+  return wrap;
+}
 
+// Köder (je nach Sparte) plus optionale Details wie Farbe oder Größe.
+function buildBaitPicker(id) {
+  const wrap = buildChipPicker(id, {
+    title: 'Köder', field: 'baits', options: MODES[entryMode(getEntry(id))].baits, allOptions: ALL_BAITS,
+  });
   const detail = document.createElement('input');
   detail.type = 'text';
   detail.className = 'bait-detail';
@@ -698,9 +732,15 @@ function buildBaitPicker(id) {
   let timer = null;
   detail.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(save, 600); });
   detail.addEventListener('blur', () => { clearTimeout(timer); save(); });
-
-  wrap.append(chips, detail);
+  wrap.appendChild(detail);
   return wrap;
+}
+
+// Angelmethode (je nach Sparte), getrennt vom Köder.
+function buildMethodPicker(id) {
+  return buildChipPicker(id, {
+    title: 'Angelmethode', field: 'methods', options: MODES[entryMode(getEntry(id))].methods, allOptions: ALL_METHODS,
+  });
 }
 
 // Fotos eines Besuchs: Vorschaubilder, Hinzufügen aus der Foto-App, Vollbild mit Löschen.
@@ -922,11 +962,11 @@ async function renameSpot(key) {
   refreshSpotSummary(key);
 }
 
-function baitSummary(visits) {
+function listSummary(visits, field, labels) {
   const counts = {};
-  for (const v of visits) for (const b of v.baits || []) counts[b] = (counts[b] || 0) + 1;
-  return Object.keys(ALL_BAITS).filter((b) => counts[b])
-    .map((b) => (visits.length > 1 ? `${ALL_BAITS[b]} ${counts[b]}×` : ALL_BAITS[b])).join(', ');
+  for (const v of visits) for (const b of v[field] || []) counts[b] = (counts[b] || 0) + 1;
+  return Object.keys(labels).filter((b) => counts[b])
+    .map((b) => (visits.length > 1 ? `${labels[b]} ${counts[b]}×` : labels[b])).join(', ');
 }
 
 function ratingBadge(key) {
@@ -948,8 +988,10 @@ function spotHeaderHtml(key) {
     : `<div class="spot-title">${ratingBadge(overall)}</div><div class="muted">1 Besuch</div>`;
   const fish = fishSummary(visits);
   if (fish) html += `<div class="cond"><b>Gut gefangen:</b> ${fish}</div>`;
-  const baits = baitSummary(visits);
+  const baits = listSummary(visits, 'baits', ALL_BAITS);
   if (baits) html += `<div class="cond"><b>Köder:</b> ${baits}</div>`;
+  const methods = listSummary(visits, 'methods', ALL_METHODS);
+  if (methods) html += `<div class="cond"><b>Methode:</b> ${methods}</div>`;
   const water = spotWaterTypes(key).map((t) => WATER_TYPES[t]).join(', ');
   if (water) html += `<div class="cond"><b>Gewässer:</b> ${water}</div>`;
   const sun = sunTimesHtml(new Date(), visits[0].lat, visits[0].lng);
@@ -1007,7 +1049,7 @@ function buildVisit(entry, open) {
   });
   actions.appendChild(del);
 
-  visit.append(summary, when, details, buildFishPicker(id), buildBaitPicker(id), buildWaterTempInput(id),
+  visit.append(summary, when, details, buildFishPicker(id), buildBaitPicker(id), buildMethodPicker(id), buildWaterTempInput(id),
     buildWaterTypePicker(id),
     buildNotesField(id), buildPhotoSection(id), actions);
   return visit;
@@ -1839,7 +1881,8 @@ importInput.addEventListener('change', async () => {
     if (!Array.isArray(list)) throw new Error('Ungültiges Format');
     const valid = list.filter((r) =>
       r && typeof r.id === 'string' && RATINGS[r.rating] &&
-      Number.isFinite(r.lat) && Number.isFinite(r.lng) && typeof r.timestamp === 'string');
+      Number.isFinite(r.lat) && Number.isFinite(r.lng) && typeof r.timestamp === 'string')
+      .map(normalizeEntry);
 
     let photoCount = 0;
     for (const p of (!Array.isArray(parsed) && parsed.photos) || []) {

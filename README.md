@@ -52,15 +52,17 @@ Eintrag wird nie einem Spot der anderen Sparte zugeordnet. Jeder Eintrag speiche
 Sparte (Feld `mode`); ältere Einträge zählen als Raubfisch. Die Sicherungsdatei enthält
 beide Sparten.
 
-| Sparte | Fischarten | Köder |
-|---|---|---|
-| Raubfisch | Barsch, Zander, Hecht | Gummifisch, Wobbler, Spinner, Blinker, Dropshot, Jerkbait, Köderfisch |
-| Friedfisch | Karpfen, Brasse, Rotauge, Schleie, Barbe, Rotfeder | Mais, Boilie, Made, Wurm, Teig, Pellet, Brot |
+| Sparte | Fischarten | Köder | Angelmethoden |
+|---|---|---|---|
+| Raubfisch | Barsch, Zander, Hecht | Gummifisch, Wobbler, Spinner, Blinker, Jerkbait, Spinnerbait, Köderfisch | Jiggen, Faulenzen, Dropshot, Texas-Rig, Carolina-Rig, Twitchen/Jerken, Vertikalangeln, Schleppen, Ansitz |
+| Friedfisch | Karpfen, Brasse, Rotauge, Schleie, Barbe, Rotfeder | Mais, Boilie, Made, Wurm, Teig, Pellet, Brot | Feeder, Method-Feeder, Pose, Grundangeln, Haar-Montage, Stippen |
 
 ## Köder, Wassertemperatur, Sonnenzeiten
 
-- **Köder:** pro Besuch auswählbar (mehrere möglich) plus Freitext für Farbe/Größe. Die
-  Spot-Analyse zeigt einen **Köder-Tipp** (Köder aus guten Besuchen mit ähnlichem Wetter).
+- **Köder** und **Angelmethode** sind getrennt: beide pro Besuch auswählbar (mehrere
+  möglich), beim Köder zusätzlich Freitext für Farbe/Größe. Die Spot-Analyse zeigt einen
+  **Tipp** mit Köder und Methode aus guten Besuchen mit ähnlichem Wetter. Ältere Einträge
+  mit „Dropshot“ als Köder werden beim Start automatisch auf die Methode umgestellt.
 - **Wassertemperatur** (Reihenfolge, die erste verfügbare zählt):
   1. **selbst gemessen** (Eingabefeld im Besuch, z. B. Wert vom Echolot),
   2. **Pegel**: nächster PEGELONLINE-Pegel mit Temperaturmessung im Umkreis von 50 km

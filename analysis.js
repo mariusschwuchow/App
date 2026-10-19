@@ -197,16 +197,20 @@ function analyzeSpots(forecasts, spotPoints, dayOffset, fish) {
     // Empfehlung: erwartete Bewertung, abgeschwächt, wenn kein Besuch wirklich ähnlich war.
     const recommendation = Math.round(((expected - 1) / 3) * best.sim * 100);
 
-    // Köder-Tipp: Köder aus guten Besuchen, gewichtet nach Ähnlichkeit.
-    const baitWeights = {};
-    for (const m of goodMatches) {
-      for (const b of m.visit.baits || []) baitWeights[b] = (baitWeights[b] || 0) + m.sim ** 3;
-    }
-    const bestBait = Object.keys(baitWeights).sort((x, y) => baitWeights[y] - baitWeights[x])[0] || null;
+    // Köder- und Methoden-Tipp: aus guten Besuchen, gewichtet nach Ähnlichkeit.
+    const topOf = (field) => {
+      const weights = {};
+      for (const m of goodMatches) {
+        for (const b of m.visit[field] || []) weights[b] = (weights[b] || 0) + m.sim ** 3;
+      }
+      return Object.keys(weights).sort((x, y) => weights[y] - weights[x])[0] || null;
+    };
+    const bestBait = topOf('baits');
+    const bestMethod = topOf('methods');
 
     results.push({
       key: spot.key, visits: spot.visits, lat: spot.lat, lng: spot.lng,
-      expected, recommendation, best, bestGood, bestBait, matchCount: matches.length,
+      expected, recommendation, best, bestGood, bestBait, bestMethod, matchCount: matches.length,
       waterTemp: spot.waterTemp ?? null,
     });
   });
@@ -340,8 +344,10 @@ function renderAnalysisResults(results, skipped) {
       `<div class="cond"><b>Am ähnlichsten:</b> ${escapeHtml(visitDateLabel(ref.visit))} ` +
       `${ratingBadge(ref.visit.rating)}${fish ? ` <span class="muted">${fish}</span>` : ''} – ` +
       `${Math.round(ref.sim * 100)} % Übereinstimmung</div>` +
-      (r.bestBait ? `<div class="cond"><b>Köder-Tipp:</b> ${ALL_BAITS[r.bestBait]} ` +
-        '<span class="muted">(lief bei ähnlichem Wetter)</span></div>' : '') +
+      (r.bestBait || r.bestMethod ? '<div class="cond"><b>Tipp:</b> ' +
+        [r.bestBait && `Köder ${ALL_BAITS[r.bestBait]}`, r.bestMethod && `Methode ${ALL_METHODS[r.bestMethod]}`]
+          .filter(Boolean).join(' · ') +
+        ' <span class="muted">(lief bei ähnlichem Wetter)</span></div>' : '') +
       (sun ? `<div class="cond"><b>Sonne:</b> ${sun}</div>` : '') +
       (fits.length ? `<div class="cond muted">Passt: ${fits.join(', ')}</div>` : '') +
       (misses.length ? `<div class="cond muted">Weicht ab: ${misses.join(', ')}</div>` : '');

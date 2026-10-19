@@ -163,6 +163,7 @@ function renderStats() {
     return bucketOf(WATER_TEMP_BUCKETS, wt ? wt.value : null);
   }), WATER_TEMP_BUCKETS.map((b) => b[0]));
   html += barSection('Nach Köder', groupRatings(visits, (v) => (v.baits || []).map((b) => ALL_BAITS[b])));
+  html += barSection('Nach Angelmethode', groupRatings(visits, (v) => (v.methods || []).map((m) => ALL_METHODS[m])));
   html += barSection('Nach Gewässertyp', groupRatings(visits, (v) => spotWaterTypes(spotKey(v)).map((w) => WATER_TYPES[w])));
 
   statsBody.innerHTML = html;
