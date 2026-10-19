@@ -34,6 +34,14 @@ const MOON_BUCKETS = [
   ['🌗 Abnehmend', (p) => p >= 0.625 && p < 0.875],
 ];
 
+const DEPTH_BUCKETS = [
+  ['unter 2 m', (d) => d < 2],
+  ['2–4 m', (d) => d >= 2 && d < 4],
+  ['4–6 m', (d) => d >= 4 && d < 6],
+  ['6–10 m', (d) => d >= 6 && d < 10],
+  ['ab 10 m', (d) => d >= 10],
+];
+
 const WATER_TEMP_BUCKETS = [
   ['unter 8 °C', (t) => t < 8],
   ['8–12 °C', (t) => t >= 8 && t < 12],
@@ -102,6 +110,110 @@ function hourOf(v) {
   return new Date(t).getHours();
 }
 
+// Alle Auswertungen: Titel, Kurzname für die Erkenntnisse, Gruppierung, feste Reihenfolge.
+function statDimensions() {
+  return [
+    { title: 'Nach Monat', short: 'Monat', order: MONTHS, groupsOf: (v) => {
+      const t = visitTime(v);
+      return t === null ? [] : [MONTHS[new Date(t).getMonth()]];
+    } },
+    { title: 'Nach Tageszeit', short: 'Tageszeit', order: DAYTIME_BUCKETS.map((b) => b[0]),
+      groupsOf: (v) => bucketOf(DAYTIME_BUCKETS, hourOf(v)) },
+    { title: 'Nach Luftdruckverlauf (24 h)', short: 'Luftdruck', order: PRESSURE_BUCKETS.map((b) => b[0]),
+      groupsOf: (v) => {
+        const p = v.conditions && v.conditions.pressure;
+        const t = p && Number.isFinite(p.current) && Number.isFinite(p.yesterday) ? p.current - p.yesterday : null;
+        return bucketOf(PRESSURE_BUCKETS, t);
+      } },
+    { title: 'Nach Mondphase', short: 'Mond', order: MOON_BUCKETS.map((b) => b[0]), groupsOf: (v) => {
+      const phase = v.moon && Number.isFinite(v.moon.phase) ? v.moon.phase : null;
+      return bucketOf(MOON_BUCKETS, phase);
+    } },
+    { title: 'Nach Wassertemperatur', short: 'Wasser', order: WATER_TEMP_BUCKETS.map((b) => b[0]), groupsOf: (v) => {
+      const wt = effectiveWaterTemp(v);
+      return bucketOf(WATER_TEMP_BUCKETS, wt ? wt.value : null);
+    } },
+    { title: 'Nach Wassertrübung', short: 'Trübung', order: Object.values(TURBIDITY),
+      groupsOf: (v) => (v.turbidity ? [TURBIDITY[v.turbidity]] : []) },
+    { title: 'Nach Angeltiefe', short: 'Tiefe', order: DEPTH_BUCKETS.map((b) => b[0]),
+      groupsOf: (v) => bucketOf(DEPTH_BUCKETS, v.depth) },
+    { title: 'Nach Köder', short: 'Köder', groupsOf: (v) => (v.baits || []).map((b) => ALL_BAITS[b]) },
+    { title: 'Nach Angelmethode', short: 'Methode', groupsOf: (v) => (v.methods || []).map((m) => ALL_METHODS[m]) },
+    { title: 'Nach Gewässertyp', short: 'Gewässer',
+      groupsOf: (v) => spotWaterTypes(spotKey(v)).map((w) => WATER_TYPES[w]) },
+  ];
+}
+
+// Erkenntnisse in Worten: je Auswertung die Gruppe, die mit mindestens 2 Besuchen deutlich
+// besser (bzw. schlechter) als der Durchschnitt aller Besuche abschneidet.
+function insightsHtml(visits, dims) {
+  const overall = avg(visits.map((v) => SCORES[v.rating]));
+  const good = [];
+  const bad = [];
+  for (const d of dims) {
+    const groups = [...groupRatings(visits, d.groupsOf).entries()].filter(([, s]) => s.length >= 2);
+    if (groups.length < 2) continue; // nur vergleichen, wenn es Alternativen gibt
+    const best = groups.reduce((a, b) => (avg(b[1]) > avg(a[1]) ? b : a));
+    const worst = groups.reduce((a, b) => (avg(b[1]) < avg(a[1]) ? b : a));
+    if (avg(best[1]) >= overall + 0.25) good.push({ d, label: best[0], scores: best[1] });
+    if (avg(worst[1]) <= overall - 0.5) bad.push({ d, label: worst[0], scores: worst[1] });
+  }
+  const item = ({ d, label, scores }) =>
+    `<li><b>${d.short}:</b> ${escapeHtml(label)} <span class="muted">(Ø ${avgLabel(avg(scores))}, ${scores.length} Besuche)</span></li>`;
+  const who = statsFishFilter ? `${ALL_FISH[statsFishFilter]}-` : '';
+  if (!good.length && !bad.length) {
+    return '<section class="stat-section insights"><h3>Erkenntnisse</h3><p class="muted">Noch zu wenige Daten: ' +
+      'Für Aussagen braucht es je Bedingung mindestens 2 Besuche und einen Vergleich.</p></section>';
+  }
+  return '<section class="stat-section insights"><h3>Erkenntnisse</h3>' +
+    (good.length ? `<p>Deine besten ${who}Tage hattest du bei:</p><ul>${good.map(item).join('')}</ul>` : '') +
+    (bad.length ? `<p>Eher schwach lief es bei:</p><ul>${bad.map(item).join('')}</ul>` : '') +
+    `<p class="muted">Verglichen mit deinem Durchschnitt (${avgLabel(overall)}).</p></section>`;
+}
+
+// Saisonkalender: Ø-Bewertung je Spot und Monat (nur Monate mit Besuchen).
+function seasonCalendarHtml(visits) {
+  const months = new Set();
+  const bySpot = new Map();
+  for (const v of visits) {
+    const t = visitTime(v);
+    if (t === null) continue;
+    const m = new Date(t).getMonth();
+    months.add(m);
+    const key = spotKey(v);
+    if (!bySpot.has(key)) bySpot.set(key, new Map());
+    const cell = bySpot.get(key);
+    if (!cell.has(m)) cell.set(m, []);
+    cell.get(m).push(SCORES[v.rating]);
+  }
+  if (!months.size) return '';
+  const cols = [...months].sort((a, b) => a - b);
+  const rows = [...bySpot.entries()].map(([key, cells]) => {
+    const name = spotName(key) || 'Spot';
+    const tds = cols.map((m) => {
+      const scores = cells.get(m);
+      if (!scores) return '<td></td>';
+      const r = RATING_BY_SCORE[Math.min(4, Math.max(1, Math.round(avg(scores))))];
+      return `<td><span class="season-cell" style="background:${RATINGS[r].color}" ` +
+        `title="${escapeHtml(name)}, ${MONTHS[m]}: ${avgLabel(avg(scores))}, ${scores.length}×">` +
+        `${RATINGS[r].label.replace('Sehr gut', 'S.gut')}</span></td>`;
+    }).join('');
+    return `<tr><th scope="row">${escapeHtml(name)}</th>${tds}</tr>`;
+  }).join('');
+  return '<section class="stat-section"><h3>Saisonkalender</h3>' +
+    '<p class="muted stat-hint">Ø-Bewertung je Spot und Monat (über alle Jahre).</p>' +
+    `<div class="season-scroll"><table class="season"><thead><tr><th></th>${cols.map((m) => `<th>${MONTHS[m]}</th>`).join('')}` +
+    `</tr></thead><tbody>${rows}</tbody></table></div></section>`;
+}
+
+// Einzelfänge (aus Sessions/Nachträgen) bzw. – bei Besuchen ohne Fangliste – die Fischart.
+function catchesOf(v, f) {
+  const list = (v.catches || []).filter((c) => c.fish === f);
+  if (list.length) return list.map((c) => c.size).map((s) => (Number.isFinite(s) ? s : null));
+  if ((v.fish || []).includes(f)) return [v.fishSizes && Number.isFinite(v.fishSizes[f]) ? v.fishSizes[f] : null];
+  return [];
+}
+
 function renderStats() {
   if (statsFishFilter && !modeFish()[statsFishFilter]) statsFishFilter = null;
   statsTitle.textContent = `Fangstatistik – ${MODES[currentMode].label}`;
@@ -117,54 +229,47 @@ function renderStats() {
     return;
   }
 
-  // Fischarten mit Größen
+  // Fischarten mit Größen (Einzelfänge zählen einzeln)
   const fishKeys = statsFishFilter ? [statsFishFilter] : Object.keys(modeFish());
   let biggest = null;
+  let totalCatches = 0;
   const fishRows = fishKeys.map((f) => {
-    const withFish = visits.filter((v) => (v.fish || []).includes(f));
-    if (!withFish.length) return '';
-    const sizes = withFish.map((v) => v.fishSizes && v.fishSizes[f]).filter(Number.isFinite);
+    const all = visits.flatMap((v) => catchesOf(v, f));
+    if (!all.length) return '';
+    totalCatches += all.length;
+    const sizes = all.filter(Number.isFinite);
     const max = sizes.length ? Math.max(...sizes) : null;
     if (max && (!biggest || max > biggest.size)) biggest = { fish: f, size: max };
     const mean = sizes.length ? Math.round(sizes.reduce((s, x) => s + x, 0) / sizes.length) : null;
-    return `<div class="stat-fish"><b>${ALL_FISH[f]}</b> <span class="muted">${withFish.length}× gefangen</span>` +
+    return `<div class="stat-fish"><b>${ALL_FISH[f]}</b> <span class="muted">${all.length}× gefangen</span>` +
       (max ? `<br>größter ${max} cm · Ø ${mean} cm <span class="muted">(${sizes.length} mit Größe)</span>` : '') +
       '</div>';
   }).join('');
 
-  const catches = visits.filter((v) => (v.fish || []).length).length;
+  // Fangrate über alle Sessions (Fänge pro Stunde)
+  const sessions = visits.filter((v) => v.sessionStart);
+  const sessionMs = sessions.reduce((s, v) => s + (new Date(v.timestamp) - new Date(v.sessionStart)), 0);
+  const sessionCatches = sessions.reduce((s, v) => s + (v.catches || [])
+    .filter((c) => !statsFishFilter || c.fish === statsFishFilter).length, 0);
+  const rate = sessionMs >= 15 * 60000 ? (sessionCatches / (sessionMs / 3600000)).toFixed(1).replace('.', ',') : null;
+
+  const dims = statDimensions();
   let html = '<div class="stat-tiles">' +
     statTile('Spots', spots.size) +
     statTile('Besuche', visits.length) +
-    statTile('Mit Fang', catches) +
+    statTile('Fänge', totalCatches) +
     statTile('Größter Fisch', biggest ? `${biggest.size} cm` : '–', biggest ? ALL_FISH[biggest.fish] : '') +
+    statTile('Fangrate', rate ? `${rate}/h` : '–', rate
+      ? `${sessions.length} ${sessions.length === 1 ? 'Session' : 'Sessions'}, ${(sessionMs / 3600000).toFixed(1).replace('.', ',')} h`
+      : 'aus Angel-Sessions') +
+    statTile('Schneidertage', sessions.filter((v) => !(v.catches || []).length).length, 'Sessions ohne Fang') +
     '</div>';
+  html += insightsHtml(visits, dims);
   html += '<p class="stat-note">Balken = durchschnittliche Bewertung (Schlecht 1 … Sehr gut 4), ' +
     'dahinter die Anzahl der Besuche. Wenige Besuche sind wenig aussagekräftig.</p>';
   if (fishRows) html += `<section class="stat-section"><h3>Fischarten</h3>${fishRows}</section>`;
-
-  html += barSection('Nach Monat', groupRatings(visits, (v) => {
-    const t = visitTime(v);
-    return t === null ? [] : [MONTHS[new Date(t).getMonth()]];
-  }), MONTHS);
-  html += barSection('Nach Tageszeit', groupRatings(visits, (v) => bucketOf(DAYTIME_BUCKETS, hourOf(v))),
-    DAYTIME_BUCKETS.map((b) => b[0]));
-  html += barSection('Nach Luftdruckverlauf (24 h)', groupRatings(visits, (v) => {
-    const p = v.conditions && v.conditions.pressure;
-    const t = p && Number.isFinite(p.current) && Number.isFinite(p.yesterday) ? p.current - p.yesterday : null;
-    return bucketOf(PRESSURE_BUCKETS, t);
-  }), PRESSURE_BUCKETS.map((b) => b[0]));
-  html += barSection('Nach Mondphase', groupRatings(visits, (v) => {
-    const phase = v.moon && Number.isFinite(v.moon.phase) ? v.moon.phase : null;
-    return bucketOf(MOON_BUCKETS, phase);
-  }), MOON_BUCKETS.map((b) => b[0]));
-  html += barSection('Nach Wassertemperatur', groupRatings(visits, (v) => {
-    const wt = effectiveWaterTemp(v);
-    return bucketOf(WATER_TEMP_BUCKETS, wt ? wt.value : null);
-  }), WATER_TEMP_BUCKETS.map((b) => b[0]));
-  html += barSection('Nach Köder', groupRatings(visits, (v) => (v.baits || []).map((b) => ALL_BAITS[b])));
-  html += barSection('Nach Angelmethode', groupRatings(visits, (v) => (v.methods || []).map((m) => ALL_METHODS[m])));
-  html += barSection('Nach Gewässertyp', groupRatings(visits, (v) => spotWaterTypes(spotKey(v)).map((w) => WATER_TYPES[w])));
+  html += seasonCalendarHtml(visits);
+  for (const d of dims) html += barSection(d.title, groupRatings(visits, d.groupsOf), d.order);
 
   statsBody.innerHTML = html;
 }

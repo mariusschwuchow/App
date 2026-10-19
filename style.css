@@ -759,7 +759,7 @@ html, body {
 .water-temp-input { display: block; }
 .water-temp-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
 
-.water-temp-row input {
+.water-temp-row input[type="text"] {
   width: 7em;
   padding: 6px 8px;
   border: 1px solid #d0d7de;
@@ -767,3 +767,330 @@ html, body {
   font: inherit;
   font-size: 16px; /* kein Auto-Zoom auf dem iPhone */
 }
+
+/* ---- Angel-Session ---- */
+
+.bottom-bar { flex-wrap: wrap; }
+
+.session-start {
+  flex-basis: 100%;
+  max-width: 360px;
+  border: none;
+  border-radius: 999px;
+  padding: 12px 18px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+  background: #1a7f37;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+}
+
+.session-bar {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: calc(24px + env(safe-area-inset-bottom));
+  z-index: 1000;
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 10px 12px;
+  background: #fff;
+  border: 2px solid #1a7f37;
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+.session-bar[hidden] { display: none; }
+.session-info { display: flex; flex-direction: column; font-size: 15px; }
+.session-info .muted { color: #57606a; font-size: 13px; }
+.session-actions { display: flex; gap: 8px; margin-top: 8px; }
+
+.session-actions button {
+  border: none;
+  border-radius: 10px;
+  padding: 12px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.session-catch { flex: 2; background: #1f6feb; color: #fff; }
+.session-end { flex: 1; background: #24292f; color: #fff; }
+.session-discard { flex: none; width: 44px; background: #eaeef2; color: #24292f; }
+
+.catch-form {
+  position: fixed;
+  inset: 0;
+  z-index: 2500;
+  overflow-y: auto;
+  background: #f6f8fa;
+  padding: calc(12px + env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom));
+  font-size: 15px;
+}
+
+.catch-form[hidden] { display: none; }
+.catch-field { display: block; margin-top: 14px; }
+.catch-field > b { display: block; margin-bottom: 4px; }
+.catch-field .muted { color: #6e7781; font-weight: 400; }
+.catch-form .fish-chip::before { content: none !important; }
+.catch-form .fish-chip[aria-pressed="true"]::before { content: "✓ " !important; }
+
+.catch-field input[type="text"],
+.catch-field input[type="time"] {
+  display: block;
+  width: 10em;
+  padding: 8px 10px;
+  border: 1px solid #d0d7de;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 16px;
+}
+
+.link-button {
+  margin-top: 4px;
+  border: none;
+  background: none;
+  color: #1f6feb;
+  font-size: 14px;
+  padding: 0;
+  cursor: pointer;
+}
+
+.catch-save {
+  display: block;
+  width: 100%;
+  margin-top: 18px;
+  border: none;
+  border-radius: 12px;
+  padding: 14px;
+  font-size: 17px;
+  font-weight: 700;
+  color: #fff;
+  background: #1a7f37;
+  cursor: pointer;
+}
+
+.catch-list { margin-top: 4px; }
+
+.catch-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 5px 0;
+  border-top: 1px solid #eaeef2;
+}
+
+.catch-time { color: #57606a; font-variant-numeric: tabular-nums; }
+
+.catch-delete {
+  flex: none;
+  border: none;
+  background: #eaeef2;
+  border-radius: 6px;
+  width: 26px;
+  height: 26px;
+  cursor: pointer;
+}
+
+/* ---- Kartenart, Darstellung ---- */
+
+.layer-toggle {
+  position: fixed;
+  top: calc(96px + env(safe-area-inset-top));
+  right: 10px;
+  z-index: 1000;
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  font-size: 22px;
+  cursor: pointer;
+}
+
+.menu-label { margin-top: 6px; font-weight: 600; font-size: 14px; color: #57606a; }
+.theme-switch { margin-bottom: 6px; }
+.theme-switch .fish-chip::before { content: none !important; }
+
+.night-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  pointer-events: none;
+  background: #ff0000;
+  mix-blend-mode: multiply;
+}
+
+.night-overlay[hidden] { display: none; }
+
+/* Dunkle Ansicht: Flächen dunkel, Text hell, Straßenkarte invertiert */
+:root[data-theme="dark"] { color-scheme: dark; }
+:root[data-theme="dark"] body { background: #0d1117; color: #e6edf3; }
+:root[data-theme="dark"][data-layer="karte"] .leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.9);
+}
+:root[data-theme="dark"][data-layer="satellit"] .leaflet-tile-pane { filter: brightness(0.7); }
+:root[data-theme="dark"] .leaflet-container { background: #0d1117; }
+
+:root[data-theme="dark"] .status,
+:root[data-theme="dark"] .pick-button,
+:root[data-theme="dark"] .rating-menu,
+:root[data-theme="dark"] .backup-panel,
+:root[data-theme="dark"] .filter-panel,
+:root[data-theme="dark"] .backup-toggle,
+:root[data-theme="dark"] .mode-badge,
+:root[data-theme="dark"] .filter-toggle:not(.active),
+:root[data-theme="dark"] .layer-toggle,
+:root[data-theme="dark"] .pick-bar,
+:root[data-theme="dark"] .session-bar,
+:root[data-theme="dark"] .leaflet-popup-content-wrapper,
+:root[data-theme="dark"] .leaflet-popup-tip,
+:root[data-theme="dark"] .leaflet-bar a,
+:root[data-theme="dark"] .analysis-card,
+:root[data-theme="dark"] .stat-tile,
+:root[data-theme="dark"] .stat-section,
+:root[data-theme="dark"] .analysis-days button:not([aria-pressed="true"]),
+:root[data-theme="dark"] .fish-chip:not([aria-pressed="true"]),
+:root[data-theme="dark"] .popup-secondary,
+:root[data-theme="dark"] .apple-maps-link,
+:root[data-theme="dark"] .size-step,
+:root[data-theme="dark"] input,
+:root[data-theme="dark"] textarea {
+  background: #161b22 !important;
+  color: #e6edf3 !important;
+  border-color: #30363d !important;
+}
+
+:root[data-theme="dark"] .analysis,
+:root[data-theme="dark"] .catch-form { background: #0d1117; color: #e6edf3; }
+:root[data-theme="dark"] .backup-reminder { background: #3b2e00; color: #f0e6c0; border-color: #6e5a00; }
+:root[data-theme="dark"] .size-row { background: #21262d; }
+:root[data-theme="dark"] .visit { border-color: #30363d; }
+:root[data-theme="dark"] .visit[open] summary,
+:root[data-theme="dark"] .catch-row,
+:root[data-theme="dark"] .stat-fish { border-color: #30363d; }
+:root[data-theme="dark"] .muted,
+:root[data-theme="dark"] .stat-value,
+:root[data-theme="dark"] .stat-note,
+:root[data-theme="dark"] .stat-tile-label,
+:root[data-theme="dark"] .stat-tile-sub,
+:root[data-theme="dark"] .analysis-intro,
+:root[data-theme="dark"] .menu-label,
+:root[data-theme="dark"] .filter-label,
+:root[data-theme="dark"] .catch-time { color: #8b949e !important; }
+:root[data-theme="dark"] .stat-tile-value,
+:root[data-theme="dark"] .stat-label,
+:root[data-theme="dark"] .analysis-name { color: #e6edf3; }
+:root[data-theme="dark"] .analysis-close,
+:root[data-theme="dark"] .mode-switch button:not([aria-pressed="true"]),
+:root[data-theme="dark"] .import-label,
+:root[data-theme="dark"] .filter-reset,
+:root[data-theme="dark"] .spot-rename,
+:root[data-theme="dark"] .catch-delete,
+:root[data-theme="dark"] .session-discard,
+:root[data-theme="dark"] .rating-menu .cancel,
+:root[data-theme="dark"] .pick-actions .secondary {
+  background: #21262d !important;
+  color: #e6edf3 !important;
+}
+:root[data-theme="dark"] .mode-switch button[aria-pressed="true"] { background: #e6edf3 !important; color: #0d1117 !important; }
+:root[data-theme="dark"] .leaflet-control-attribution { background: rgba(13, 17, 23, 0.8) !important; color: #8b949e; }
+:root[data-theme="dark"] .leaflet-control-attribution a { color: #58a6ff; }
+
+/* ---- Erkenntnisse, Saisonkalender ---- */
+
+.insights { border-left: 6px solid #1a7f37; }
+.insights p { margin: 4px 0; }
+.insights ul { margin: 4px 0 8px; padding-left: 18px; }
+.insights li { margin: 2px 0; }
+.stat-hint { margin: 0 0 6px; font-size: 12px; }
+
+.season-scroll { overflow-x: auto; }
+.season { border-collapse: separate; border-spacing: 2px; font-size: 12px; }
+.season th { font-weight: 600; color: #57606a; text-align: center; padding: 2px 4px; }
+.season th[scope="row"] { text-align: left; color: #24292f; max-width: 9em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.season td { text-align: center; }
+
+.season-cell {
+  display: inline-block;
+  min-width: 3.4em;
+  padding: 3px 4px;
+  border-radius: 4px;
+  color: #fff;
+  font-weight: 600;
+}
+
+:root[data-theme="dark"] .season th[scope="row"] { color: #e6edf3; }
+
+/* ---- Suche, Spot-Liste, Teilen, Export ---- */
+
+.search-toggle {
+  position: fixed;
+  top: calc(148px + env(safe-area-inset-top));
+  right: 10px;
+  z-index: 1000;
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  font-size: 20px;
+  cursor: pointer;
+}
+
+:root[data-theme="dark"] .search-toggle { background: #161b22; }
+
+.search-panel { right: 64px; }
+.search-form { display: flex; gap: 6px; }
+
+.search-form input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid #d0d7de;
+  border-radius: 8px;
+  font-size: 16px;
+}
+
+.search-form button {
+  border: none;
+  border-radius: 8px;
+  padding: 0 12px;
+  background: #1f6feb;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.search-results { list-style: none; margin: 8px 0 0; padding: 0; }
+.search-results li { border-top: 1px solid #eaeef2; }
+
+.search-results button {
+  display: block;
+  width: 100%;
+  border: none;
+  background: none;
+  padding: 8px 2px;
+  text-align: left;
+  font-size: 14px;
+  color: inherit;
+  cursor: pointer;
+}
+
+.spot-list-open { background: #0969da !important; margin-bottom: 6px; }
+.csv-export { background: #57606a !important; }
+
+.spot-links { display: flex; gap: 6px; }
+.spot-links > * { flex: 1; }
+.share-spot { cursor: pointer; font-family: inherit; }
+.share-spot::before { content: "📤 " !important; }
+
+.spot-card-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 15px; }
+.spot-card .muted { color: #6e7781; }
+.spot-card-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; }
+.spot-card-actions .popup-add { grid-column: 1 / -1; margin: 0; }
+.spot-card-actions .apple-maps-link { margin: 0; }

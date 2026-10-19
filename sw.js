@@ -1,5 +1,9 @@
-const CACHE = 'standort-bewertung-v16';
-const ASSETS = ['./', 'index.html', 'style.css', 'moon.js', 'conditions.js', 'places.js', 'app.js', 'analysis.js', 'stats.js', 'manifest.webmanifest', 'icon.svg'];
+const CACHE = 'standort-bewertung-v18';
+const ASSETS = ['./', 'index.html', 'style.css', 'moon.js', 'conditions.js', 'places.js', 'app.js', 'analysis.js', 'stats.js', 'session.js', 'view.js', 'tools.js', 'manifest.webmanifest', 'icon.svg',
+  'vendor/leaflet/leaflet.js', 'vendor/leaflet/leaflet.css',
+  'vendor/leaflet/images/layers.png', 'vendor/leaflet/images/layers-2x.png',
+  'vendor/leaflet/images/marker-icon.png', 'vendor/leaflet/images/marker-icon-2x.png',
+  'vendor/leaflet/images/marker-shadow.png'];
 
 self.addEventListener('install', (e) => {
   self.skipWaiting();

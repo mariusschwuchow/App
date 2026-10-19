@@ -5,7 +5,7 @@ Web-App (PWA) mit einer Karte, die deinen aktuellen Standort anzeigt. Über den 
 Die Auswahl wird zusammen mit den Koordinaten und dem Zeitpunkt gespeichert und als farbiger
 Punkt auf der Karte angezeigt. Ein Tipp auf einen Punkt zeigt Details und erlaubt das Löschen.
 
-- Karte: [Leaflet](https://leafletjs.com/) mit OpenStreetMap-Kacheln
+- Karte: [Leaflet](https://leafletjs.com/) 1.9.4 (lokal in `vendor/leaflet`, BSD-2-Lizenz) mit OpenStreetMap-Kacheln oder Luftbild (Esri World Imagery)
 - Speicherung: lokal auf dem Gerät, doppelt in IndexedDB und `localStorage`
 - Kein Build-Schritt nötig – reine HTML/CSS/JS-Dateien
 
@@ -43,6 +43,44 @@ hat eigene Bewertung, Wetter- und Pegeldaten, Mondphase, Fischarten und Notizen.
   Beispiel: Schlecht + Mittel + Gut = Mittel. Die Farbe des Punkts zeigt die
   Gesamtbewertung, die Zahl darin die Anzahl der Besuche.
 
+## Ohne Netz
+
+Die App startet auch ohne Empfang: alle App-Dateien inklusive Leaflet liegen lokal und
+werden vom Service Worker gespeichert (nur die Kartenbilder selbst brauchen Netz).
+Bewertungen ohne Netz werden normal gespeichert; fehlende Wetter- und Pegeldaten holt die
+App automatisch nach, sobald wieder Netz da ist (beim Start und beim Wiederverbinden) –
+mit den Werten zum Zeitpunkt des Besuchs.
+
+## Angel-Session mit Einzelfängen
+
+**„▶ Angel-Session starten“** beim Ankommen (fragt wie gewohnt, ob der Platz zu einem
+vorhandenen Spot gehört). Während der Session zeigt die Leiste unten Dauer, Anzahl der
+Fänge und Fänge pro Stunde.
+
+- **„+ Fang“**: Fischart, Größe (Regler, −/+), Gewicht (kg), Uhrzeit, Köder, Methode,
+  zurückgesetzt/entnommen und Fotos. Köder und Methode werden vom letzten Fang übernommen.
+- **„Beenden“**: Bewertung wählen – daraus wird ein Besuch mit Fangliste, Angeldauer und
+  Fangrate (Wetter zur Mitte der Session). Eine Session ohne Fang zählt als Schneidertag.
+- **✕** verwirft die Session. Eine laufende Session übersteht das Schließen der App.
+- In jedem Besuch lassen sich Fänge auch nachträglich eintragen („+ Fang nachtragen“).
+
+## Darstellung und Kartenart
+
+Menü → **Darstellung**: Hell, **Dunkel** (dunkle Flächen, abgedunkelte Karte) oder
+**Rotlicht** für die Nacht (alles in Rottönen, schont die Nachtsicht). Der Knopf 🛰️ rechts
+schaltet zwischen Straßenkarte und **Satellitenansicht** um (Buhnen, Kanten, Krautfelder
+sind dort besser zu erkennen). Beides bleibt gespeichert.
+
+## Spot-Liste, Ortssuche, Teilen, Export
+
+- Menü → **Spot-Liste**: alle Spots der Sparte, sortierbar nach Bewertung, Entfernung,
+  letztem Besuch oder Name.
+- **🔍** rechts: Ort, Gewässer oder Adresse suchen (Nominatim) und dorthin springen.
+- **„Spot teilen“** im Spot und in der Liste: Name, Koordinaten, Apple-Karten- und
+  Google-Maps-Link über das Teilen-Menü (sonst in die Zwischenablage).
+- Menü → **Als Tabelle exportieren (CSV)**: eine Zeile je Besuch mit allen Werten
+  (Semikolon-getrennt, Umlaute korrekt in Excel/Numbers).
+
 ## Raubfisch und Friedfisch
 
 Im Menü (☰) oben lässt sich zwischen **🎣 Raubfisch** und **🐟 Friedfisch** umschalten;
@@ -78,12 +116,22 @@ beide Sparten.
   für heute im Spot-Kopf, für den Besuchstag in jedem Besuch und für den gewählten Tag in
   der Analyse.
 
+## Wassertrübung und Angeltiefe
+
+Pro Besuch: Trübung (Klar, Leicht trüb, Trüb, Sehr trüb) und Angeltiefe in Metern.
+
 ## Fangstatistik
 
-Menü → **Fangstatistik**: Kennzahlen (Spots, Besuche, Besuche mit Fang, größter Fisch),
-Fischarten mit größtem und durchschnittlichem Fisch sowie die durchschnittliche Bewertung
-nach Monat, Tageszeit, Luftdruckverlauf, Mondphase, Wassertemperatur, Köder und
-Gewässertyp. Mit Fischfilter.
+Menü → **Fangstatistik** (mit Fischfilter):
+
+- Kennzahlen: Spots, Besuche, Fänge (Einzelfänge zählen einzeln), größter Fisch,
+  Fangrate (Fänge pro Stunde aus Sessions), Schneidertage.
+- **Erkenntnisse in Worten**: je Auswertung die Bedingung, die mit mindestens 2 Besuchen
+  deutlich besser bzw. schlechter als dein Durchschnitt abschneidet.
+- **Saisonkalender**: Ø-Bewertung je Spot und Monat.
+- Fischarten mit größtem und durchschnittlichem Fisch.
+- Ø-Bewertung nach Monat, Tageszeit, Luftdruckverlauf, Mondphase, Wassertemperatur,
+  Trübung, Angeltiefe, Köder, Angelmethode und Gewässertyp.
 
 ## Kartenfilter, Umbenennen, Zusammenlegen
 

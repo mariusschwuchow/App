@@ -6,8 +6,7 @@
   <meta name="theme-color" content="#1f6feb">
   <title>Standort-Bewertung</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -16,11 +15,51 @@
   <div id="status" class="status">Standort wird ermittelt …</div>
 
   <div id="bottom-bar" class="bottom-bar">
+    <button id="session-start" class="session-start">▶ Angel-Session starten</button>
     <button id="pick-button" class="pick-button">Ort wählen</button>
     <button id="rate-button" class="rate-button" disabled aria-haspopup="true" aria-expanded="false">
       Standort bewerten
     </button>
   </div>
+
+  <div id="session-bar" class="session-bar" hidden>
+    <div class="session-info">
+      <b id="session-title">Session läuft</b>
+      <span id="session-status" class="muted"></span>
+    </div>
+    <div class="session-actions">
+      <button id="session-discard" class="session-discard" aria-label="Session verwerfen">✕</button>
+      <button id="session-catch" class="session-catch">+ Fang</button>
+      <button id="session-end" class="session-end">Beenden</button>
+    </div>
+  </div>
+
+  <section id="catch-form" class="catch-form" hidden aria-label="Fang eintragen">
+    <header class="analysis-header">
+      <h2 id="catch-form-title">Fang eintragen</h2>
+      <button id="catch-cancel" class="analysis-close" aria-label="Abbrechen">&times;</button>
+    </header>
+    <div class="catch-field"><b>Fischart</b><div id="catch-fish" class="fish-chips"></div></div>
+    <div class="catch-field">
+      <div class="size-head"><b>Größe</b><span id="catch-size-value" class="size-value">– cm</span></div>
+      <div class="size-controls">
+        <button type="button" class="size-step" data-step="-1" aria-label="kleiner">−</button>
+        <input id="catch-size" type="range" min="1" max="150" step="1" value="50" aria-label="Größe in cm">
+        <button type="button" class="size-step" data-step="1" aria-label="größer">+</button>
+      </div>
+      <button type="button" id="catch-size-clear" class="link-button">Größe nicht angeben</button>
+    </div>
+    <label class="catch-field"><b>Gewicht <span class="muted">(kg, optional)</span></b>
+      <input id="catch-weight" type="text" inputmode="decimal" autocomplete="off" placeholder="z. B. 2,4"></label>
+    <label class="catch-field"><b>Uhrzeit</b><input id="catch-time" type="time"></label>
+    <div class="catch-field"><b>Köder</b><div id="catch-bait" class="fish-chips"></div></div>
+    <div class="catch-field"><b>Angelmethode</b><div id="catch-method" class="fish-chips"></div></div>
+    <div class="catch-field"><b>Verbleib</b><div id="catch-released" class="fish-chips"></div></div>
+    <label class="catch-field photo-add">+ Foto vom Fang
+      <input id="catch-photo" type="file" accept="image/*" multiple></label>
+    <p id="catch-photo-info" class="muted"></p>
+    <button id="catch-save" class="catch-save">Fang speichern</button>
+  </section>
 
   <div id="crosshair" class="crosshair" hidden aria-hidden="true"></div>
 
@@ -49,6 +88,16 @@
   <button id="backup-toggle" class="backup-toggle" aria-expanded="false" aria-controls="backup-panel"
           title="Menü">&#9776;</button>
   <button id="mode-badge" class="mode-badge" title="Sparte wechseln"></button>
+  <button id="search-toggle" class="search-toggle" title="Ort suchen" aria-controls="search-panel">🔍</button>
+  <div id="search-panel" class="filter-panel search-panel" hidden>
+    <form id="search-form" class="search-form" role="search">
+      <input id="search-input" type="search" placeholder="Ort, Gewässer, Adresse …" autocomplete="off" enterkeyhint="search">
+      <button type="submit">Suchen</button>
+    </form>
+    <ul id="search-results" class="search-results"></ul>
+  </div>
+  <button id="layer-toggle" class="layer-toggle" aria-pressed="false" title="Satellitenansicht">🛰️</button>
+  <div id="night-overlay" class="night-overlay" hidden aria-hidden="true"></div>
   <button id="filter-toggle" class="filter-toggle" aria-expanded="false" aria-controls="filter-panel">Filter</button>
 
   <div id="backup-panel" class="backup-panel" hidden>
@@ -58,10 +107,14 @@
     </div>
     <button id="analysis-open" class="analysis-open">Spot-Analyse: Wohin heute?</button>
     <button id="stats-open" class="stats-open">Fangstatistik</button>
+    <button id="spot-list-open" class="spot-list-open">Spot-Liste</button>
+    <div class="menu-label">Darstellung</div>
+    <div id="theme-switch" class="fish-chips theme-switch"></div>
     <h2>Meine Daten</h2>
     <p id="backup-info"></p>
     <button id="export-button">Sicherung erstellen</button>
     <button id="share-backup" class="share-backup" hidden>In Dateien / iCloud Drive sichern</button>
+    <button id="csv-export" class="csv-export">Als Tabelle exportieren (CSV)</button>
     <label class="import-label">
       Sicherung wiederherstellen
       <input id="import-input" type="file" accept="application/json,.json">
@@ -107,6 +160,16 @@
     <div id="analysis-list" class="analysis-list"></div>
   </section>
 
+  <section id="spot-list" class="analysis" hidden aria-label="Spot-Liste">
+    <header class="analysis-header">
+      <h2 id="spot-list-title">Spots</h2>
+      <button id="spot-list-close" class="analysis-close" aria-label="Schließen">&times;</button>
+    </header>
+    <div class="filter-label">Sortieren nach</div>
+    <div id="spot-list-sort" class="fish-chips analysis-fish"></div>
+    <div id="spot-list-body"></div>
+  </section>
+
   <section id="stats" class="analysis" hidden aria-label="Fangstatistik">
     <header class="analysis-header">
       <h2 id="stats-title">Fangstatistik</h2>
@@ -126,12 +189,15 @@
 
   <div id="toast" class="toast" hidden></div>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <!-- Leaflet 1.9.4 liegt lokal, damit die App auch ohne Netz startet -->
+  <script src="vendor/leaflet/leaflet.js"></script>
   <script src="moon.js"></script>
   <script src="conditions.js"></script>
   <script src="places.js"></script>
   <script src="app.js"></script>
+  <script src="session.js"></script>
+  <script src="view.js"></script>
+  <script src="tools.js"></script>
   <script src="analysis.js"></script>
   <script src="stats.js"></script>
 </body>

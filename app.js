@@ -83,7 +83,7 @@ const RATINGS = {
 
 const map = L.map('map', { zoomControl: false }).setView([51.1657, 10.4515], 6);
 L.control.zoom({ position: 'topright' }).addTo(map);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+const streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   maxZoom: 19,
   attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
 }).addTo(map);
@@ -314,7 +314,6 @@ async function requestPersistentStorage() {
 const ratingsLayer = L.layerGroup().addTo(map);
 
 const markersBySpot = new Map();
-const RETRY_WINDOW_MS = 3 * 60 * 60 * 1000;
 const SAME_SPOT_RADIUS_M = 50;
 const loadingIds = new Set();
 
@@ -419,7 +418,12 @@ function sunTimesHtml(date, lat, lng) {
 // Zeitpunkt (Unix-Sekunden), für den Wetterdaten abgerufen werden:
 // bei manuellen Einträgen das Besuchsdatum (ohne Uhrzeit: 12 Uhr), sonst jetzt (null).
 function conditionsTarget(entry) {
-  if (!entry.manual) return null;
+  if (!entry.manual) {
+    // Vor-Ort-Bewertung: frisch = aktuelle Werte, später nachgeholt = Werte zum Zeitpunkt
+    // (bei einer Session: zur Mitte der Session).
+    const t = visitTime(entry);
+    return Date.now() - t < 60 * 60 * 1000 ? null : Math.floor(t / 1000);
+  }
   return Math.floor(new Date(`${entry.visitedAt}T${entry.visitedTime || '12:00'}:00`).getTime() / 1000);
 }
 
@@ -429,8 +433,30 @@ function canRetry(entry) {
   const incomplete = !c || (c.errors && Object.keys(c.errors).length > 0);
   if (!incomplete) return false;
   if (entry.manual) return Boolean(entry.visitedAt);
-  return Date.now() - new Date(entry.timestamp).getTime() < RETRY_WINDOW_MS;
+  return true;
 }
+
+// Holt fehlende oder unvollständige Wetter-/Pegeldaten automatisch nach (beim Start und
+// sobald wieder Netz da ist), z. B. für Bewertungen, die ohne Empfang gespeichert wurden.
+let autoFetchRunning = false;
+async function autoFetchMissing() {
+  if (autoFetchRunning || !navigator.onLine) return;
+  autoFetchRunning = true;
+  try {
+    const pending = ratings.filter((r) => RATINGS[r.rating] && canRetry(r) &&
+      !(r.manual && !r.visitedAt));
+    let done = 0;
+    for (const r of pending.slice(0, 20)) {
+      if (!navigator.onLine) break;
+      const result = await loadConditions(r.id).catch(() => null);
+      if (result && !Object.keys(result.errors).length) done++;
+    }
+    if (done) showToast(`Wetterdaten für ${done} ${done === 1 ? 'Besuch' : 'Besuche'} nachgeholt`);
+  } finally {
+    autoFetchRunning = false;
+  }
+}
+window.addEventListener('online', () => autoFetchMissing());
 
 function getEntry(id) {
   return ratings.find((r) => r.id === id);
@@ -444,6 +470,10 @@ function spotKey(entry) {
 
 // Zeitpunkt des Besuchs in ms (null = Datum unbekannt).
 function visitTime(entry) {
+  // Angel-Session: Mitte der Session als Zeitpunkt des Besuchs.
+  if (entry.sessionStart) {
+    return Math.round((new Date(entry.sessionStart).getTime() + new Date(entry.timestamp).getTime()) / 2);
+  }
   if (!entry.manual) return new Date(entry.timestamp).getTime();
   if (!entry.visitedAt) return null;
   return new Date(`${entry.visitedAt}T${entry.visitedTime || '12:00'}:00`).getTime();
@@ -648,6 +678,62 @@ function buildFishPicker(id) {
   return wrap;
 }
 
+const TURBIDITY = { klar: 'Klar', leicht: 'Leicht trüb', trueb: 'Trüb', sehr: 'Sehr trüb' };
+
+// Wasserfarbe/Trübung (eine Auswahl) und Angeltiefe in Metern.
+function buildWaterConditionInputs(id) {
+  const wrap = document.createElement('div');
+  wrap.className = 'cond';
+
+  const title = document.createElement('b');
+  title.textContent = 'Wassertrübung:';
+  const chips = document.createElement('div');
+  chips.className = 'fish-chips';
+  const renderChips = () => chipRow(chips, Object.entries(TURBIDITY),
+    (v) => v === getEntry(id).turbidity,
+    async (v) => {
+      const current = getEntry(id);
+      const updated = { ...current };
+      if (current.turbidity === v) delete updated.turbidity; else updated.turbidity = v;
+      await updateRating(updated);
+      renderChips();
+    });
+  renderChips();
+
+  const depthLabel = document.createElement('label');
+  depthLabel.className = 'water-temp-input';
+  depthLabel.innerHTML = '<b>Angeltiefe:</b>';
+  const row = document.createElement('span');
+  row.className = 'water-temp-row';
+  const depth = document.createElement('input');
+  depth.type = 'text';
+  depth.inputMode = 'decimal';
+  depth.autocomplete = 'off';
+  depth.placeholder = 'z. B. 4,5';
+  const own = getEntry(id).depth;
+  depth.value = Number.isFinite(own) ? String(own).replace('.', ',') : '';
+  const unit = document.createElement('span');
+  unit.textContent = 'm';
+  row.append(depth, unit);
+  depthLabel.appendChild(row);
+  const save = async () => {
+    const current = getEntry(id);
+    if (!current) return;
+    const raw = depth.value.trim().replace(',', '.');
+    const value = raw === '' ? null : Math.round(Number(raw) * 10) / 10;
+    if (raw !== '' && !(value >= 0 && value <= 200)) return;
+    if ((current.depth ?? null) === value) return;
+    const updated = { ...current };
+    if (value === null) delete updated.depth; else updated.depth = value;
+    await updateRating(updated);
+  };
+  depth.addEventListener('change', save);
+  depth.addEventListener('blur', save);
+
+  wrap.append(title, chips, depthLabel);
+  return wrap;
+}
+
 // Selbst gemessene Wassertemperatur (z. B. vom Echolot) – hat Vorrang vor Pegel und Schätzung.
 function buildWaterTempInput(id) {
   const wrap = document.createElement('label');
@@ -655,15 +741,14 @@ function buildWaterTempInput(id) {
   wrap.innerHTML = '<b>Wassertemperatur selbst gemessen:</b>';
   const row = document.createElement('span');
   row.className = 'water-temp-row';
+  // Textfeld mit Zahlentastatur: akzeptiert Komma und Punkt (Zahlenfelder verwerfen „14,5“).
   const input = document.createElement('input');
-  input.type = 'number';
+  input.type = 'text';
   input.inputMode = 'decimal';
-  input.step = '0.1';
-  input.min = '0';
-  input.max = '40';
+  input.autocomplete = 'off';
   input.placeholder = 'z. B. 14,5';
   const own = getEntry(id).waterTempManual;
-  input.value = Number.isFinite(own) ? String(own) : '';
+  input.value = Number.isFinite(own) ? String(own).replace('.', ',') : '';
   const unit = document.createElement('span');
   unit.textContent = '°C';
   row.append(input, unit);
@@ -1002,7 +1087,9 @@ function spotHeaderHtml(key) {
 function visitTitleHtml(entry) {
   const fish = (entry.fish || []).map((f) => fishLabelWithSize(entry, f)).join(', ');
   const photos = (entry.photoIds || []).length;
+  const catches = (entry.catches || []).length;
   return `<span class="visit-date">${escapeHtml(visitDateLabel(entry, false))}</span> ${ratingBadge(entry.rating)}` +
+    (catches ? ` <span class="muted">🐟 ${catches}</span>` : '') +
     (fish ? ` <span class="muted">${fish}</span>` : '') +
     (photos ? ` <span class="muted">📷 ${photos}</span>` : '');
 }
@@ -1049,7 +1136,8 @@ function buildVisit(entry, open) {
   });
   actions.appendChild(del);
 
-  visit.append(summary, when, details, buildFishPicker(id), buildBaitPicker(id), buildMethodPicker(id), buildWaterTempInput(id),
+  visit.append(summary, when, details, buildCatchSection(id), buildFishPicker(id), buildBaitPicker(id), buildMethodPicker(id), buildWaterTempInput(id),
+    buildWaterConditionInputs(id),
     buildWaterTypePicker(id),
     buildNotesField(id), buildPhotoSection(id), actions);
   return visit;
@@ -1087,7 +1175,10 @@ function buildSpotPopup(key, expandId) {
     list.appendChild(buildVisit(v, visits.length === 1 || v.id === expandId));
   }
 
-  popup.append(header, buildAppleMapsLink(key), add, list);
+  const links = document.createElement('div');
+  links.className = 'spot-links';
+  links.append(buildAppleMapsLink(key), buildShareButton(key));
+  popup.append(header, links, add, list);
 
   if (allSpotKeys().length > 1) {
     const merge = document.createElement('button');
@@ -1204,14 +1295,14 @@ function startMerge(key) {
   hideBackupReminder();
   mergeSource = key;
   map.closePopup();
-  bottomBar.hidden = true;
+  hideBottomControls();
   mergeBar.hidden = false;
 }
 
 function stopMerge() {
   mergeSource = null;
   mergeBar.hidden = true;
-  bottomBar.hidden = false;
+  showBottomControls();
 }
 
 document.getElementById('merge-cancel').addEventListener('click', stopMerge);
@@ -1291,7 +1382,7 @@ function renderRatings() {
         minWidth: 240,
         // Abstand zu den Bedienelementen oben (Menü, Zoom) und unten (Buttons)
         autoPanPaddingTopLeft: L.point(12, 120),
-        autoPanPaddingBottomRight: L.point(12, 100),
+        autoPanPaddingBottomRight: L.point(12, 160),
       })
       .addTo(ratingsLayer);
     marker.on('click', () => { if (mergeSource) handleMergeTarget(key); });
@@ -1422,6 +1513,20 @@ function localDateString(date) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
+// Untere Bedienleiste: normale Knöpfe oder – während einer Angel-Session – die Session-Leiste.
+function hideBottomControls() {
+  bottomBar.hidden = true;
+  const bar = document.getElementById('session-bar');
+  if (bar) bar.hidden = true;
+}
+
+function showBottomControls() {
+  const active = typeof activeSession !== 'undefined' && activeSession;
+  bottomBar.hidden = Boolean(active);
+  const bar = document.getElementById('session-bar');
+  if (bar) bar.hidden = !active;
+}
+
 // Die Sicherungs-Erinnerung darf Bedienelemente nicht verdecken.
 function hideBackupReminder() {
   const el = document.getElementById('backup-reminder');
@@ -1431,7 +1536,7 @@ function hideBackupReminder() {
 function openMenu(mode) {
   hideBackupReminder();
   menuMode = mode;
-  visitDateField.hidden = mode === 'current';
+  visitDateField.hidden = mode === 'current' || mode === 'session';
   visitDateLabelEl.innerHTML = mode === 'visit'
     ? 'Datum des Besuchs <span class="muted">(leer = jetzt)</span>'
     : 'Wann warst du dort? <span class="muted">(optional)</span>';
@@ -1441,13 +1546,13 @@ function openMenu(mode) {
     visitDateInput.max = localDateString(new Date());
   }
   menu.hidden = false;
-  bottomBar.hidden = true;
+  hideBottomControls();
   rateButton.setAttribute('aria-expanded', 'true');
 }
 
 function closeMenu() {
   menu.hidden = true;
-  bottomBar.hidden = false;
+  showBottomControls();
   rateButton.setAttribute('aria-expanded', 'false');
 }
 
@@ -1455,7 +1560,7 @@ function startPicking() {
   hideBackupReminder();
   map.closePopup();
   ratingsLayer.eachLayer((layer) => layer.closePopup());
-  bottomBar.hidden = true;
+  hideBottomControls();
   crosshair.hidden = false;
   pickBar.hidden = false;
 }
@@ -1463,7 +1568,7 @@ function startPicking() {
 function stopPicking() {
   crosshair.hidden = true;
   pickBar.hidden = true;
-  bottomBar.hidden = false;
+  showBottomControls();
 }
 
 pickButton.addEventListener('click', startPicking);
@@ -1599,7 +1704,9 @@ menu.addEventListener('click', (e) => {
   const rating = button.dataset.rating;
   if (!rating) return;
 
-  if (menuMode === 'visit') {
+  if (menuMode === 'session') {
+    finishSession(rating);
+  } else if (menuMode === 'visit') {
     if (targetSpot) saveVisitRating(rating);
   } else if (menuMode === 'manual') {
     if (pickedLatLng) saveManualRating(rating);
@@ -1915,6 +2022,7 @@ const ratingsReady = loadRatings();
   persistent = await requestPersistentStorage();
   updateBackupInfo();
   checkBackupReminder();
+  autoFetchMissing();
 })();
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
