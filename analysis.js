@@ -51,7 +51,7 @@ function visitFeatures(entry) {
     cloudCover: num(w.cloudCover),
     precipitation: num(w.precipitation),
     moonPhase,
-    waterTemp: c.waterTemp ? num(c.waterTemp.value) : null,
+    waterTemp: effectiveWaterTemp(entry) ? effectiveWaterTemp(entry).value : null,
   };
 }
 
@@ -90,7 +90,7 @@ async function fetchSpotForecasts(points) {
     latitude: points.map((p) => p.lat.toFixed(3)).join(','),
     longitude: points.map((p) => p.lng.toFixed(3)).join(','),
     hourly: 'temperature_2m,pressure_msl,wind_speed_10m,wind_direction_10m,cloud_cover,precipitation,weather_code',
-    past_days: '1',
+    past_days: '7', // 7 Tage zurück für die Schätzung der Wassertemperatur
     forecast_days: '3',
     wind_speed_unit: 'kmh',
     timeformat: 'unixtime',
@@ -166,7 +166,14 @@ function analyzeSpots(forecasts, spotPoints, dayOffset, fish) {
       const features = visitFeatures(v);
       if (score === null || !features) continue;
       const hour = visitHour(v);
-      const forecast = { ...forecastFeatures(hourly, dayTarget(dayOffset, hour)), waterTemp: spot.waterTemp ?? null };
+      const target = dayTarget(dayOffset, hour);
+      const estimate = estimateWaterTemp(hourly.time || [], hourly.temperature_2m || [], target);
+      const measured = Number.isFinite(spot.waterTemp);
+      const forecast = {
+        ...forecastFeatures(hourly, target),
+        waterTemp: measured ? spot.waterTemp : estimate,
+        waterTempSource: measured ? 'gemessen' : estimate !== null ? 'geschätzt' : null,
+      };
       const sim = similarity(features, forecast);
       if (!sim) continue;
       matches.push({ visit: v, score, sim: sim.value, parts: sim.parts, hour, forecast });
@@ -270,7 +277,11 @@ function forecastSummary(f) {
   if (f.windSpeed !== null) parts.push(`Wind ${Math.round(f.windSpeed)} km/h ${windDirectionName(f.windDirectionRaw)}`);
   if (f.cloudCover !== null) parts.push(`Wolken ${Math.round(f.cloudCover)} %`);
   if (f.precipitation) parts.push(`Regen ${fmt(f.precipitation, 'mm')}`);
-  if (f.waterTemp !== null && f.waterTemp !== undefined) parts.push(`Wasser ${fmt(f.waterTemp, '°C')} (aktuell gemessen)`);
+  if (f.waterTemp !== null && f.waterTemp !== undefined) {
+    parts.push(f.waterTempSource === 'gemessen'
+      ? `Wasser ${fmt(f.waterTemp, '°C')} (aktuell gemessen)`
+      : `Wasser ≈ ${fmt(f.waterTemp, '°C')} (geschätzt)`);
+  }
   return parts.join(' · ');
 }
 

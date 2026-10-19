@@ -159,7 +159,7 @@ function renderStats() {
     return bucketOf(MOON_BUCKETS, phase);
   }), MOON_BUCKETS.map((b) => b[0]));
   html += barSection('Nach Wassertemperatur', groupRatings(visits, (v) => {
-    const wt = v.conditions && v.conditions.waterTemp;
+    const wt = effectiveWaterTemp(v);
     return bucketOf(WATER_TEMP_BUCKETS, wt ? wt.value : null);
   }), WATER_TEMP_BUCKETS.map((b) => b[0]));
   html += barSection('Nach Köder', groupRatings(visits, (v) => (v.baits || []).map((b) => ALL_BAITS[b])));

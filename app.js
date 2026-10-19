@@ -355,15 +355,30 @@ function conditionsHtml(entry) {
     html += `<div class="cond muted">Kein Pegel im Umkreis von ${PEGEL_RADIUS_KM} km gefunden.</div>`;
   }
 
-  if (c.waterTemp) {
-    const wt = c.waterTemp;
-    html += `<div class="cond"><b>Wassertemperatur:</b> ${fmt(wt.value, '°C')}<br>` +
-      `<span class="muted">Pegel ${escapeHtml(wt.station)}${wt.water ? ` (${escapeHtml(wt.water)})` : ''}, ` +
-      `${fmt(wt.distanceKm, 'km')} entfernt</span></div>`;
-  } else if (c.waterTemp === null) {
-    html += '<div class="cond muted">Wassertemperatur: kein Messpegel in der Nähe.</div>';
-  }
   return html;
+}
+
+// Wassertemperatur eines Besuchs: selbst gemessen > Pegel > Schätzung aus Lufttemperatur.
+function effectiveWaterTemp(entry) {
+  if (Number.isFinite(entry.waterTempManual)) return { value: entry.waterTempManual, source: 'manual' };
+  const c = entry.conditions || {};
+  if (c.waterTemp && Number.isFinite(c.waterTemp.value)) return { value: c.waterTemp.value, source: 'pegel', gauge: c.waterTemp };
+  if (Number.isFinite(c.waterTempEstimate)) return { value: c.waterTempEstimate, source: 'estimate' };
+  return null;
+}
+
+function waterTempHtml(entry) {
+  const wt = effectiveWaterTemp(entry);
+  if (!wt) return '';
+  const value = fmt(wt.value, '°C');
+  if (wt.source === 'manual') return `<b>Wassertemperatur:</b> ${value} <span class="muted">(selbst gemessen)</span>`;
+  if (wt.source === 'pegel') {
+    const g = wt.gauge;
+    return `<b>Wassertemperatur:</b> ${value}<br><span class="muted">gemessen am Pegel ${escapeHtml(g.station)}` +
+      `${g.water ? ` (${escapeHtml(g.water)})` : ''}, ${fmt(g.distanceKm, 'km')} entfernt</span>`;
+  }
+  return `<b>Wassertemperatur:</b> ≈ ${value} <span class="muted">(geschätzt aus der Lufttemperatur der ` +
+    'letzten 7 Tage – kein Messpegel in der Nähe)</span>';
 }
 
 // Sonnenzeiten als Text, z. B. „Dämmerung 07:29 · Aufgang 08:02 · Untergang 18:34 · Dämmerung 19:07“.
@@ -460,13 +475,27 @@ function renderPopupDetails(entry, container) {
   const moonLabel = entry.manual && !entry.visitedTime ? 'Mond (Tagesmitte)' : 'Mond';
   const when = visitTime(entry);
   const sun = when !== null ? sunTimesHtml(new Date(when), entry.lat, entry.lng) : '';
+  const wtHtml = waterTempHtml(entry);
   container.innerHTML =
     (sun ? `<div class="cond"><b>Sonne:</b> ${sun}</div>` : '') +
     (moon ? `<div class="cond"><b>${moonLabel}:</b> ${moon.symbol} ${moon.name}, ` +
       `${moon.illumination} % beleuchtet</div>` : '') +
     (entry.manual && !entry.visitedAt
       ? '<div class="cond muted">Ohne Besuchsdatum gibt es keine Wetterdaten.</div>'
-      : conditionsHtml(entry));
+      : conditionsHtml(entry)) +
+    (wtHtml ? `<div class="cond">${wtHtml}</div>` : '');
+
+  // Besuche von vor dem Update: Wassertemperatur nachträglich ermitteln.
+  if (canLoadWaterTemp(entry)) {
+    const btn = document.createElement('button');
+    btn.className = 'popup-retry';
+    btn.textContent = 'Wassertemperatur nachladen';
+    btn.addEventListener('click', (e) => {
+      L.DomEvent.stopPropagation(e);
+      loadWaterTemp(entry.id);
+    });
+    container.appendChild(btn);
+  }
 
   if (canRetry(entry)) {
     const retry = document.createElement('button');
@@ -590,6 +619,44 @@ function buildFishPicker(id) {
   }
   wrap.append(chips, sizes);
   for (const f of getEntry(id).fish || []) sizes.appendChild(buildSizeRow(id, f));
+  return wrap;
+}
+
+// Selbst gemessene Wassertemperatur (z. B. vom Echolot) – hat Vorrang vor Pegel und Schätzung.
+function buildWaterTempInput(id) {
+  const wrap = document.createElement('label');
+  wrap.className = 'cond water-temp-input';
+  wrap.innerHTML = '<b>Wassertemperatur selbst gemessen:</b>';
+  const row = document.createElement('span');
+  row.className = 'water-temp-row';
+  const input = document.createElement('input');
+  input.type = 'number';
+  input.inputMode = 'decimal';
+  input.step = '0.1';
+  input.min = '0';
+  input.max = '40';
+  input.placeholder = 'z. B. 14,5';
+  const own = getEntry(id).waterTempManual;
+  input.value = Number.isFinite(own) ? String(own) : '';
+  const unit = document.createElement('span');
+  unit.textContent = '°C';
+  row.append(input, unit);
+
+  const save = async () => {
+    const current = getEntry(id);
+    if (!current) return;
+    const raw = input.value.trim().replace(',', '.');
+    const value = raw === '' ? null : Math.round(Number(raw) * 10) / 10;
+    if (raw !== '' && !(value >= 0 && value <= 40)) return;
+    if ((current.waterTempManual ?? null) === value) return;
+    const updated = { ...current };
+    if (value === null) delete updated.waterTempManual; else updated.waterTempManual = value;
+    await updateRating(updated);
+    refreshPopup(id);
+  };
+  input.addEventListener('change', save);
+  input.addEventListener('blur', save);
+  wrap.appendChild(row);
   return wrap;
 }
 
@@ -940,7 +1007,8 @@ function buildVisit(entry, open) {
   });
   actions.appendChild(del);
 
-  visit.append(summary, when, details, buildFishPicker(id), buildBaitPicker(id), buildWaterTypePicker(id),
+  visit.append(summary, when, details, buildFishPicker(id), buildBaitPicker(id), buildWaterTempInput(id),
+    buildWaterTypePicker(id),
     buildNotesField(id), buildPhotoSection(id), actions);
   return visit;
 }
@@ -1180,7 +1248,7 @@ function renderRatings() {
         maxWidth: 300,
         minWidth: 240,
         // Abstand zu den Bedienelementen oben (Menü, Zoom) und unten (Buttons)
-        autoPanPaddingTopLeft: L.point(12, 70),
+        autoPanPaddingTopLeft: L.point(12, 120),
         autoPanPaddingBottomRight: L.point(12, 100),
       })
       .addTo(ratingsLayer);
@@ -1192,6 +1260,38 @@ function renderRatings() {
     marker.on('popupclose', () => marker.getPopup().getContent()
       .querySelectorAll('.photo-section').forEach((sec) => sec.clearPhotos()));
     markersBySpot.set(key, marker);
+  }
+}
+
+function canLoadWaterTemp(entry) {
+  const c = entry.conditions;
+  return Boolean(c && c.weather && !loadingIds.has(entry.id) && visitTime(entry) !== null &&
+    !Number.isFinite(entry.waterTempManual) && !('waterTemp' in c) && !('waterTempEstimate' in c));
+}
+
+// Holt nur Wassertemperatur (Pegel) und Schätzung für den Besuchszeitpunkt nach und
+// ergänzt sie in den gespeicherten Daten, ohne Wetter und Pegelstand zu ändern.
+async function loadWaterTemp(id) {
+  const entry = getEntry(id);
+  if (!entry || loadingIds.has(id)) return;
+  loadingIds.add(id);
+  refreshPopup(id);
+  try {
+    const target = Math.floor(visitTime(entry) / 1000);
+    const fresh = await fetchConditions(entry.lat, entry.lng, target);
+    const current = getEntry(id);
+    if (!current) return;
+    const conditions = { ...current.conditions };
+    if ('waterTemp' in fresh) conditions.waterTemp = fresh.waterTemp;
+    if ('waterTempEstimate' in fresh) conditions.waterTempEstimate = fresh.waterTempEstimate;
+    else conditions.waterTempEstimate = null;
+    await updateRating({ ...current, conditions });
+    if (!effectiveWaterTemp(getEntry(id))) showToast('Für diesen Besuch ließ sich keine Wassertemperatur ermitteln');
+  } catch {
+    showToast('Wassertemperatur konnte nicht geladen werden');
+  } finally {
+    loadingIds.delete(id);
+    refreshPopup(id);
   }
 }
 

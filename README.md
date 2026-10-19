@@ -61,9 +61,17 @@ beide Sparten.
 
 - **Köder:** pro Besuch auswählbar (mehrere möglich) plus Freitext für Farbe/Größe. Die
   Spot-Analyse zeigt einen **Köder-Tipp** (Köder aus guten Besuchen mit ähnlichem Wetter).
-- **Wassertemperatur:** vom nächsten PEGELONLINE-Pegel mit Temperaturmessung (25 km),
-  aktuell oder bis 30 Tage zurück. Viele Pegel messen sie nicht. In der Analyse wird der
-  aktuell gemessene Wert mit früheren Besuchen verglichen (es gibt keine Vorhersage).
+- **Wassertemperatur** (Reihenfolge, die erste verfügbare zählt):
+  1. **selbst gemessen** (Eingabefeld im Besuch, z. B. Wert vom Echolot),
+  2. **Pegel**: nächster PEGELONLINE-Pegel mit Temperaturmessung im Umkreis von 50 km
+     (aktuell oder bis 30 Tage zurück) – viele Pegel, z. B. am Rhein in NRW, messen sie nicht,
+  3. **Schätzung** aus dem Mittel der Lufttemperatur der letzten 7 Tage
+     (Faustformel für Fließgewässer: ≈ 5 + 0,75 × Lufttemperatur), klar als „geschätzt“
+     gekennzeichnet.
+
+  Ältere Besuche ohne Wert haben den Knopf „Wassertemperatur nachladen“. In der Analyse
+  wird der aktuell gemessene Pegelwert verwendet, sonst die Schätzung für den jeweiligen
+  Tag (mit Vorhersage-Temperaturen).
 - **Sonne:** Aufgang, Untergang und bürgerliche Dämmerung werden in der App berechnet –
   für heute im Spot-Kopf, für den Besuchstag in jedem Besuch und für den gewählten Tag in
   der Analyse.

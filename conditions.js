@@ -83,8 +83,8 @@ async function fetchWeather(lat, lng) {
       'cloud_cover', 'precipitation', 'wind_speed_10m', 'wind_direction_10m',
       'wind_gusts_10m', 'pressure_msl',
     ].join(','),
-    hourly: 'pressure_msl',
-    past_days: '1',
+    hourly: 'pressure_msl,temperature_2m',
+    past_days: '7',
     forecast_days: '2',
     wind_speed_unit: 'kmh',
     timeformat: 'unixtime',
@@ -96,6 +96,7 @@ async function fetchWeather(lat, lng) {
   const times = (data.hourly && data.hourly.time) || [];
   const pressures = (data.hourly && data.hourly.pressure_msl) || [];
   const now = Math.floor(Date.now() / 1000);
+  const waterTempEstimate = estimateWaterTemp(times, (data.hourly && data.hourly.temperature_2m) || [], now);
   const pressureAt = (target) => {
     let best = -1;
     let bestDiff = Infinity;
@@ -132,7 +133,21 @@ async function fetchWeather(lat, lng) {
       tomorrowIsForecast: true,
       source: 'Open-Meteo',
     },
+    waterTempEstimate,
   };
+}
+
+// Grobe Schätzung der Wassertemperatur aus dem Mittel der Lufttemperatur der letzten
+// 7 Tage (Faustformel für Fließgewässer nach Stefan & Preud'homme: Tw ≈ 5 + 0,75 · Tl).
+// Nur als Ersatz, wenn kein Pegel misst und nichts selbst gemessen wurde.
+function estimateWaterTemp(times, temps, target) {
+  const values = [];
+  times.forEach((t, i) => {
+    if (t > target - 7 * DAY_S && t <= target && Number.isFinite(temps[i])) values.push(temps[i]);
+  });
+  if (values.length < 72) return null; // mindestens 3 Tage Daten
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
+  return round(Math.max(0, 5 + 0.75 * mean));
 }
 
 function utcDateString(unixSeconds) {
@@ -148,7 +163,7 @@ async function fetchHistoricalWeather(lat, lng, target) {
     latitude: lat.toFixed(4),
     longitude: lng.toFixed(4),
     hourly: HOURLY_WEATHER_VARS.join(','),
-    start_date: utcDateString(target - 2 * DAY_S),
+    start_date: utcDateString(target - 8 * DAY_S),
     end_date: utcDateString(target + 2 * DAY_S),
     wind_speed_unit: 'kmh',
     timeformat: 'unixtime',
@@ -204,6 +219,7 @@ async function fetchHistoricalWeather(lat, lng, target) {
       tomorrowIsForecast: target + DAY_S > now,
       source: recent ? 'Open-Meteo' : 'Open-Meteo (Archiv)',
     },
+    waterTempEstimate: estimateWaterTemp(times, h.temperature_2m || [], target),
   };
 }
 
@@ -296,6 +312,8 @@ async function fetchHistoricalWaterLevel(lat, lng, target) {
 // ---- Wassertemperatur (Zeitreihe „WT“, nur an einem Teil der Pegel gemessen) ----
 
 const WATER_TEMP_CACHE_MS = 30 * 60 * 1000;
+// Wassertemperatur ändert sich entlang eines Flusses nur langsam: größerer Suchradius.
+const WATER_TEMP_RADIUS_KM = 50;
 let waterTempStationsCache = { time: 0, promise: null };
 
 // Alle Pegel mit Wassertemperatur in einer Anfrage (deutlich weniger als mit Wasserstand).
@@ -320,7 +338,7 @@ function nearestWaterTempStation(stations, lat, lng) {
     const ts = (s.timeseries || []).find((t) => t.shortname === 'WT');
     if (!ts) continue;
     const dist = distanceKm(lat, lng, s.latitude, s.longitude);
-    if (dist > PEGEL_RADIUS_KM) continue;
+    if (dist > WATER_TEMP_RADIUS_KM) continue;
     if (!nearest || dist < nearest.dist) nearest = { station: s, ts, dist };
   }
   return nearest;
@@ -374,6 +392,7 @@ async function fetchConditions(lat, lng, target = null) {
   if (weather.status === 'fulfilled') {
     result.weather = weather.value.weather;
     result.pressure = weather.value.pressure;
+    result.waterTempEstimate = weather.value.waterTempEstimate ?? null;
   } else {
     result.errors.weather = String(weather.reason && weather.reason.message || weather.reason);
   }
