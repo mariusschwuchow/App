@@ -1,5 +1,5 @@
-const CACHE = 'standort-bewertung-v12';
-const ASSETS = ['./', 'index.html', 'style.css', 'moon.js', 'conditions.js', 'places.js', 'app.js', 'analysis.js', 'manifest.webmanifest', 'icon.svg'];
+const CACHE = 'standort-bewertung-v13';
+const ASSETS = ['./', 'index.html', 'style.css', 'moon.js', 'conditions.js', 'places.js', 'app.js', 'analysis.js', 'stats.js', 'manifest.webmanifest', 'icon.svg'];
 
 self.addEventListener('install', (e) => {
   self.skipWaiting();

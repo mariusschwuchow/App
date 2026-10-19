@@ -293,6 +293,68 @@ async function fetchHistoricalWaterLevel(lat, lng, target) {
   };
 }
 
+// ---- Wassertemperatur (Zeitreihe „WT“, nur an einem Teil der Pegel gemessen) ----
+
+const WATER_TEMP_CACHE_MS = 30 * 60 * 1000;
+let waterTempStationsCache = { time: 0, promise: null };
+
+// Alle Pegel mit Wassertemperatur in einer Anfrage (deutlich weniger als mit Wasserstand).
+function fetchWaterTempStations() {
+  if (!waterTempStationsCache.promise || Date.now() - waterTempStationsCache.time > WATER_TEMP_CACHE_MS) {
+    const params = new URLSearchParams({
+      timeseries: 'WT',
+      includeTimeseries: 'true',
+      includeCurrentMeasurement: 'true',
+    });
+    const promise = fetchJson(`https://www.pegelonline.wsv.de/webservices/rest-api/v2/stations.json?${params}`);
+    promise.catch(() => { waterTempStationsCache = { time: 0, promise: null }; });
+    waterTempStationsCache = { time: Date.now(), promise };
+  }
+  return waterTempStationsCache.promise;
+}
+
+function nearestWaterTempStation(stations, lat, lng) {
+  let nearest = null;
+  for (const s of stations || []) {
+    if (!Number.isFinite(s.latitude) || !Number.isFinite(s.longitude)) continue;
+    const ts = (s.timeseries || []).find((t) => t.shortname === 'WT');
+    if (!ts) continue;
+    const dist = distanceKm(lat, lng, s.latitude, s.longitude);
+    if (dist > PEGEL_RADIUS_KM) continue;
+    if (!nearest || dist < nearest.dist) nearest = { station: s, ts, dist };
+  }
+  return nearest;
+}
+
+// Wassertemperatur am nächsten Pegel – aktuell (target = null) oder zu einem vergangenen
+// Zeitpunkt (nur ca. 30 Tage zurück). null = kein Pegel mit Temperatur in der Nähe.
+async function fetchWaterTemperature(lat, lng, target = null) {
+  const nearest = nearestWaterTempStation(await fetchWaterTempStations(), lat, lng);
+  if (!nearest) return null;
+  const info = { ...gaugeInfo(nearest), unit: '°C' };
+
+  if (target === null) {
+    const m = nearest.ts.currentMeasurement;
+    if (!m || !Number.isFinite(m.value)) return null;
+    return { ...info, value: round(m.value), measuredAt: m.timestamp || null };
+  }
+
+  const params = new URLSearchParams({
+    start: new Date((target - 3 * 3600) * 1000).toISOString(),
+    end: new Date((target + 3 * 3600) * 1000).toISOString(),
+  });
+  const measurements = await fetchJson(
+    `https://www.pegelonline.wsv.de/webservices/rest-api/v2/stations/${encodeURIComponent(nearest.station.uuid)}/WT/measurements.json?${params}`);
+  let best = null;
+  for (const m of measurements || []) {
+    const t = Date.parse(m.timestamp) / 1000;
+    if (!Number.isFinite(t) || !Number.isFinite(m.value)) continue;
+    if (!best || Math.abs(t - target) < Math.abs(best.t - target)) best = { t, m };
+  }
+  if (!best) return null;
+  return { ...info, value: round(best.m.value), measuredAt: best.m.timestamp };
+}
+
 // Ruft alle Daten parallel ab – für jetzt (target = null) oder einen vergangenen
 // Zeitpunkt (Unix-Sekunden). Teilfehler werden pro Bereich vermerkt, damit z. B. das
 // Wetter auch dann gespeichert wird, wenn der Pegel nicht erreichbar ist.
@@ -300,10 +362,11 @@ async function fetchConditions(lat, lng, target = null) {
   const now = Math.floor(Date.now() / 1000);
   const waterTooOld = target !== null && target < now - PEGEL_HISTORY_DAYS * DAY_S;
 
-  const [weather, water] = await Promise.allSettled([
+  const [weather, water, waterTemp] = await Promise.allSettled([
     target === null ? fetchWeather(lat, lng) : fetchHistoricalWeather(lat, lng, target),
     target === null ? fetchWaterLevel(lat, lng)
       : waterTooOld ? Promise.resolve(undefined) : fetchHistoricalWaterLevel(lat, lng, target),
+    waterTooOld ? Promise.resolve(undefined) : fetchWaterTemperature(lat, lng, target),
   ]);
   const result = { fetchedAt: new Date().toISOString(), errors: {} };
   if (target !== null) result.for = new Date(target * 1000).toISOString();
@@ -321,6 +384,11 @@ async function fetchConditions(lat, lng, target = null) {
     result.waterLevel = water.value; // null = kein Pegel in der Nähe
   } else {
     result.errors.waterLevel = String(water.reason && water.reason.message || water.reason);
+  }
+
+  // Fehlende Wassertemperatur ist kein Fehler (viele Pegel messen sie nicht).
+  if (!waterTooOld) {
+    result.waterTemp = waterTemp.status === 'fulfilled' ? waterTemp.value : null;
   }
   return result;
 }

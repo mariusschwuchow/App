@@ -60,3 +60,47 @@ function moonPhaseAt(date) {
     phase: Math.round(phase * 1000) / 1000,
   };
 }
+
+// ---- Sonne: Auf- und Untergang, bürgerliche Dämmerung (ebenfalls nach SunCalc) ----
+
+// Zeiten für den Kalendertag von `date` (Zeitzone des Geräts) am Ort lat/lng.
+// Ergebnis: Date-Objekte oder null (z. B. Polartag/-nacht).
+function sunTimes(date, lat, lng) {
+  const rad = MOON_RAD;
+  const dayMs = 86400000;
+  const J1970 = 2440588;
+  const J2000 = 2451545;
+  const J0 = 0.0009;
+  const e = rad * 23.4397;
+
+  const noon = new Date(date);
+  noon.setHours(12, 0, 0, 0);
+  const d = noon.getTime() / dayMs - 0.5 + J1970 - J2000;
+  const lw = rad * -lng;
+  const phi = rad * lat;
+
+  const n = Math.round(d - J0 - lw / (2 * Math.PI));
+  const approxTransit = (ht) => J0 + (ht + lw) / (2 * Math.PI) + n;
+  const ds = approxTransit(0);
+  const M = rad * (357.5291 + 0.98560028 * ds);
+  const C = rad * (1.9148 * Math.sin(M) + 0.02 * Math.sin(2 * M) + 0.0003 * Math.sin(3 * M));
+  const L = M + C + rad * 102.9372 + Math.PI;
+  const dec = Math.asin(Math.sin(e) * Math.sin(L));
+  const transit = (x) => J2000 + x + 0.0053 * Math.sin(M) - 0.0069 * Math.sin(2 * L);
+  const Jnoon = transit(ds);
+  const fromJulian = (j) => new Date((j + 0.5 - J1970) * dayMs);
+
+  const times = (angle) => {
+    const cosH = (Math.sin(angle * rad) - Math.sin(phi) * Math.sin(dec)) / (Math.cos(phi) * Math.cos(dec));
+    if (cosH < -1 || cosH > 1) return [null, null];
+    const Jset = transit(approxTransit(Math.acos(cosH)));
+    return [fromJulian(Jnoon - (Jset - Jnoon)), fromJulian(Jset)];
+  };
+  const [sunrise, sunset] = times(-0.833);
+  const [dawn, dusk] = times(-6);
+  return { dawn, sunrise, sunset, dusk };
+}
+
+function formatClock(date) {
+  return date ? date.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : '–';
+}

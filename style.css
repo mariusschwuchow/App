@@ -571,3 +571,187 @@ html, body {
 }
 
 .apple-maps-link::before { content: "🧭 "; }
+
+/* ---- Sparte, Filter, Erinnerung, Köder ---- */
+
+.status { top: calc(116px + env(safe-area-inset-top)) !important; }
+
+.mode-badge,
+.filter-toggle {
+  position: fixed;
+  z-index: 1000;
+  height: 44px;
+  border: none;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  font-size: 15px;
+  font-weight: 600;
+  color: #24292f;
+  padding: 0 12px;
+  cursor: pointer;
+}
+
+.mode-badge { top: calc(12px + env(safe-area-inset-top)); left: 64px; }
+.filter-toggle { top: calc(64px + env(safe-area-inset-top)); left: 12px; }
+.filter-toggle.active { background: #1f6feb; color: #fff; }
+
+.mode-switch { display: flex; gap: 6px; margin-bottom: 6px; }
+
+.mode-switch button {
+  flex: 1;
+  background: #eaeef2 !important;
+  color: #24292f !important;
+}
+
+.mode-switch button[aria-pressed="true"] { background: #24292f !important; color: #fff !important; }
+
+.stats-open { background: #8250df !important; margin-bottom: 6px; }
+.share-backup { background: #1a7f37 !important; }
+
+.filter-panel {
+  position: fixed;
+  top: calc(116px + env(safe-area-inset-top));
+  left: 12px;
+  right: 12px;
+  max-width: 380px;
+  max-height: calc(100% - 240px);
+  overflow-y: auto;
+  z-index: 1001;
+  padding: 14px;
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  font-size: 15px;
+}
+
+.filter-panel[hidden] { display: none; }
+.filter-panel h2 { margin: 0 0 4px; font-size: 17px; }
+.filter-label { margin-top: 10px; font-weight: 600; font-size: 14px; color: #57606a; }
+.filter-panel .fish-chip::before,
+.analysis-fish .fish-chip::before { content: none !important; }
+
+.filter-reset {
+  margin-top: 12px;
+  width: 100%;
+  border: none;
+  border-radius: 10px;
+  padding: 10px;
+  background: #eaeef2;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.backup-reminder {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: calc(96px + env(safe-area-inset-bottom));
+  z-index: 1000;
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 12px;
+  background: #fff8c5;
+  border: 1px solid #d4a72c;
+  border-radius: 14px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+
+.backup-reminder[hidden] { display: none; }
+.backup-reminder p { margin: 0 0 10px; font-size: 15px; }
+
+.bait-detail {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 6px 8px;
+  border: 1px solid #d0d7de;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 16px; /* kein Auto-Zoom auf dem iPhone */
+}
+
+.spot-rename {
+  border: none;
+  background: #eaeef2;
+  border-radius: 6px;
+  padding: 0 6px;
+  font-size: 13px;
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+.popup-secondary {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  padding: 8px;
+  border: 1px solid #d0d7de;
+  border-radius: 8px;
+  background: #fff;
+  color: #24292f;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+/* ---- Fangstatistik ---- */
+
+.stat-tiles {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.stat-tile {
+  background: #fff;
+  border-radius: 12px;
+  padding: 10px 12px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+}
+
+.stat-tile-label { font-size: 13px; color: #57606a; }
+.stat-tile-value { font-size: 26px; font-weight: 600; color: #24292f; }
+.stat-tile-sub { font-size: 13px; color: #57606a; }
+
+.stat-note { font-size: 13px; color: #57606a; margin: 12px 2px; }
+
+.stat-section {
+  background: #fff;
+  border-radius: 14px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+  font-size: 14px;
+}
+
+.stat-section h3 { margin: 0 0 8px; font-size: 15px; }
+.stat-fish { padding: 4px 0; border-top: 1px solid #eaeef2; }
+.stat-fish:first-of-type { border-top: none; }
+.stat-fish .muted { color: #6e7781; }
+
+.stat-row {
+  display: grid;
+  grid-template-columns: 7.5em 1fr;
+  grid-template-areas: "label track" "label value";
+  column-gap: 8px;
+  align-items: center;
+  padding: 4px 0;
+}
+
+.stat-label { grid-area: label; color: #24292f; font-size: 13px; line-height: 1.25; }
+.stat-track { grid-area: track; display: block; height: 12px; }
+
+/* Ein Balken je Zeile: dünn, Datenende 4 px abgerundet, an der Grundlinie eckig */
+.stat-bar {
+  display: block;
+  height: 12px;
+  min-width: 4px;
+  background: #1f6feb;
+  border-radius: 0 4px 4px 0;
+}
+
+.stat-value { grid-area: value; font-size: 12px; color: #57606a; font-variant-numeric: tabular-nums; }
+
+.backup-panel button[hidden] { display: none; }

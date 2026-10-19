@@ -48,21 +48,55 @@
 
   <button id="backup-toggle" class="backup-toggle" aria-expanded="false" aria-controls="backup-panel"
           title="Menü">&#9776;</button>
+  <button id="mode-badge" class="mode-badge" title="Sparte wechseln"></button>
+  <button id="filter-toggle" class="filter-toggle" aria-expanded="false" aria-controls="filter-panel">Filter</button>
 
   <div id="backup-panel" class="backup-panel" hidden>
+    <div class="mode-switch" role="group" aria-label="Sparte">
+      <button data-mode="raubfisch">🎣 Raubfisch</button>
+      <button data-mode="friedfisch">🐟 Friedfisch</button>
+    </div>
     <button id="analysis-open" class="analysis-open">Spot-Analyse: Wohin heute?</button>
+    <button id="stats-open" class="stats-open">Fangstatistik</button>
     <h2>Meine Daten</h2>
     <p id="backup-info"></p>
-    <button id="export-button">Sicherung herunterladen</button>
+    <button id="export-button">Sicherung erstellen</button>
+    <button id="share-backup" class="share-backup" hidden>In Dateien / iCloud Drive sichern</button>
     <label class="import-label">
       Sicherung wiederherstellen
       <input id="import-input" type="file" accept="application/json,.json">
     </label>
   </div>
 
+  <div id="filter-panel" class="filter-panel" hidden>
+    <h2>Karte filtern</h2>
+    <div class="filter-label">Fischart</div>
+    <div id="filter-fish" class="fish-chips"></div>
+    <div class="filter-label">Gewässer</div>
+    <div id="filter-water" class="fish-chips"></div>
+    <div class="filter-label">Gesamtbewertung</div>
+    <div id="filter-rating" class="fish-chips"></div>
+    <button id="filter-reset" class="filter-reset">Filter zurücksetzen</button>
+  </div>
+
+  <div id="merge-bar" class="pick-bar" hidden>
+    <p>Tippe den Spot an, mit dem dieser zusammengelegt werden soll.</p>
+    <div class="pick-actions">
+      <button id="merge-cancel" class="secondary">Abbrechen</button>
+    </div>
+  </div>
+
+  <div id="backup-reminder" class="backup-reminder" hidden>
+    <p id="backup-reminder-text"></p>
+    <div class="pick-actions">
+      <button id="backup-reminder-later" class="secondary">Später</button>
+      <button id="backup-reminder-now">Jetzt sichern</button>
+    </div>
+  </div>
+
   <section id="analysis" class="analysis" hidden aria-label="Spot-Analyse">
     <header class="analysis-header">
-      <h2>Spot-Analyse</h2>
+      <h2 id="analysis-title">Spot-Analyse</h2>
       <button id="analysis-close" class="analysis-close" aria-label="Schließen">&times;</button>
     </header>
     <p class="analysis-intro">Spots, an denen es bei ähnlichem Wetter wie in der Vorhersage gut lief.
@@ -71,6 +105,15 @@
     <div id="analysis-fish" class="fish-chips analysis-fish"></div>
     <div id="analysis-water" class="fish-chips analysis-fish"></div>
     <div id="analysis-list" class="analysis-list"></div>
+  </section>
+
+  <section id="stats" class="analysis" hidden aria-label="Fangstatistik">
+    <header class="analysis-header">
+      <h2 id="stats-title">Fangstatistik</h2>
+      <button id="stats-close" class="analysis-close" aria-label="Schließen">&times;</button>
+    </header>
+    <div id="stats-fish" class="fish-chips analysis-fish"></div>
+    <div id="stats-body"></div>
   </section>
 
   <div id="photo-viewer" class="photo-viewer" hidden>
@@ -90,5 +133,6 @@
   <script src="places.js"></script>
   <script src="app.js"></script>
   <script src="analysis.js"></script>
+  <script src="stats.js"></script>
 </body>
 </html>

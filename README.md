@@ -43,6 +43,53 @@ hat eigene Bewertung, Wetter- und Pegeldaten, Mondphase, Fischarten und Notizen.
   Beispiel: Schlecht + Mittel + Gut = Mittel. Die Farbe des Punkts zeigt die
   Gesamtbewertung, die Zahl darin die Anzahl der Besuche.
 
+## Raubfisch und Friedfisch
+
+Im Menü (☰) oben lässt sich zwischen **🎣 Raubfisch** und **🐟 Friedfisch** umschalten;
+die aktive Sparte steht oben links neben dem Menü. Beide sind strikt getrennt: Karte,
+Spot-Analyse, Fangstatistik und Filter zeigen nur die gewählte Sparte, und ein neuer
+Eintrag wird nie einem Spot der anderen Sparte zugeordnet. Jeder Eintrag speichert seine
+Sparte (Feld `mode`); ältere Einträge zählen als Raubfisch. Die Sicherungsdatei enthält
+beide Sparten.
+
+| Sparte | Fischarten | Köder |
+|---|---|---|
+| Raubfisch | Barsch, Zander, Hecht | Gummifisch, Wobbler, Spinner, Blinker, Dropshot, Jerkbait, Köderfisch |
+| Friedfisch | Karpfen, Brasse, Rotauge, Schleie, Barbe, Rotfeder | Mais, Boilie, Made, Wurm, Teig, Pellet, Brot |
+
+## Köder, Wassertemperatur, Sonnenzeiten
+
+- **Köder:** pro Besuch auswählbar (mehrere möglich) plus Freitext für Farbe/Größe. Die
+  Spot-Analyse zeigt einen **Köder-Tipp** (Köder aus guten Besuchen mit ähnlichem Wetter).
+- **Wassertemperatur:** vom nächsten PEGELONLINE-Pegel mit Temperaturmessung (25 km),
+  aktuell oder bis 30 Tage zurück. Viele Pegel messen sie nicht. In der Analyse wird der
+  aktuell gemessene Wert mit früheren Besuchen verglichen (es gibt keine Vorhersage).
+- **Sonne:** Aufgang, Untergang und bürgerliche Dämmerung werden in der App berechnet –
+  für heute im Spot-Kopf, für den Besuchstag in jedem Besuch und für den gewählten Tag in
+  der Analyse.
+
+## Fangstatistik
+
+Menü → **Fangstatistik**: Kennzahlen (Spots, Besuche, Besuche mit Fang, größter Fisch),
+Fischarten mit größtem und durchschnittlichem Fisch sowie die durchschnittliche Bewertung
+nach Monat, Tageszeit, Luftdruckverlauf, Mondphase, Wassertemperatur, Köder und
+Gewässertyp. Mit Fischfilter.
+
+## Kartenfilter, Umbenennen, Zusammenlegen
+
+- **Filter** (oben links): nach Fischart, Gewässertyp und Mindest-Gesamtbewertung.
+- **✎** neben dem Spot-Namen: eigenen Namen vergeben (leer = automatischer Ortsname).
+- **„Mit anderem Spot zusammenlegen“** im Spot, dann den Ziel-Spot antippen: alle Besuche
+  landen beim Ziel (Position und Name des Ziels, Gewässertypen werden vereinigt).
+
+## Sicherungs-Erinnerung
+
+Die App erinnert an eine Sicherung, wenn noch nie gesichert wurde (ab 3 Einträgen), seit
+der letzten Sicherung 10 neue Einträge dazugekommen sind oder sie 14 Tage her ist (bei
+neuen Einträgen). „Später“ pausiert die Erinnerung 3 Tage. Auf dem iPhone geht die
+Sicherung über **„In Dateien / iCloud Drive sichern“** direkt ins Teilen-Menü; dort
+„In Dateien sichern“ → iCloud Drive wählen.
+
 ## Spot-Analyse („Wohin heute?“)
 
 Im Menü **☰ → „Spot-Analyse: Wohin heute?“** zeigt die App für **heute, morgen und
@@ -54,7 +101,8 @@ So wird gerechnet:
    jedes früheren Besuchs (z. B. ein Besuch um 7 Uhr wird mit der Vorhersage für 7 Uhr
    verglichen).
 2. Jeder Besuch mit gespeicherten Wetterdaten wird mit der Vorhersage verglichen:
-   Druckverlauf über 24 h (Gewicht 2), Luftdruck und Temperatur (je 1,5), Wind,
+   Druckverlauf über 24 h (Gewicht 2), Luftdruck, Temperatur und Wassertemperatur
+   (je 1,5), Wind,
    Bewölkung, Niederschlag, Mondphase (je 1) und Windrichtung (0,5). Pro Merkmal gibt es
    eine Toleranz (z. B. 10 hPa, 6 °C), innerhalb derer die Ähnlichkeit von 100 % auf 0 %
    fällt.

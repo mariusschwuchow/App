@@ -10,11 +10,48 @@ const WATER_TYPES = {
   see: 'See',
 };
 
-const FISH = {
-  barsch: 'Barsch',
-  zander: 'Zander',
-  hecht: 'Hecht',
+// Zwei strikt getrennte Sparten mit eigenen Fischarten und Ködern. Jeder Eintrag gehört
+// zu genau einer Sparte (Feld „mode“, ältere Einträge ohne Feld = Raubfisch). Karte,
+// Analyse und Statistik zeigen immer nur die gewählte Sparte.
+const MODES = {
+  raubfisch: {
+    label: 'Raubfisch',
+    icon: '🎣',
+    fish: { barsch: 'Barsch', zander: 'Zander', hecht: 'Hecht' },
+    baits: {
+      gummifisch: 'Gummifisch', wobbler: 'Wobbler', spinner: 'Spinner', blinker: 'Blinker',
+      dropshot: 'Dropshot', jerkbait: 'Jerkbait', koederfisch: 'Köderfisch',
+    },
+  },
+  friedfisch: {
+    label: 'Friedfisch',
+    icon: '🐟',
+    fish: {
+      karpfen: 'Karpfen', brasse: 'Brasse', rotauge: 'Rotauge', schleie: 'Schleie',
+      barbe: 'Barbe', rotfeder: 'Rotfeder',
+    },
+    baits: {
+      mais: 'Mais', boilie: 'Boilie', made: 'Made', wurm: 'Wurm', teig: 'Teig',
+      pellet: 'Pellet', brot: 'Brot',
+    },
+  },
 };
+const ALL_FISH = { ...MODES.raubfisch.fish, ...MODES.friedfisch.fish };
+const ALL_BAITS = { ...MODES.raubfisch.baits, ...MODES.friedfisch.baits };
+
+const MODE_KEY = 'angel-sparte';
+let currentMode = 'raubfisch';
+try {
+  if (MODES[localStorage.getItem(MODE_KEY)]) currentMode = localStorage.getItem(MODE_KEY);
+} catch { /* ohne Speicher: Standard */ }
+
+function entryMode(entry) {
+  return entry.mode === 'friedfisch' ? 'friedfisch' : 'raubfisch';
+}
+
+function modeFish(mode = currentMode) {
+  return MODES[mode].fish;
+}
 
 const RATINGS = {
   'sehr-gut': { label: 'Sehr gut', color: '#1a7f37' },
@@ -317,7 +354,25 @@ function conditionsHtml(entry) {
   } else if (c.waterLevel === null) {
     html += `<div class="cond muted">Kein Pegel im Umkreis von ${PEGEL_RADIUS_KM} km gefunden.</div>`;
   }
+
+  if (c.waterTemp) {
+    const wt = c.waterTemp;
+    html += `<div class="cond"><b>Wassertemperatur:</b> ${fmt(wt.value, '°C')}<br>` +
+      `<span class="muted">Pegel ${escapeHtml(wt.station)}${wt.water ? ` (${escapeHtml(wt.water)})` : ''}, ` +
+      `${fmt(wt.distanceKm, 'km')} entfernt</span></div>`;
+  } else if (c.waterTemp === null) {
+    html += '<div class="cond muted">Wassertemperatur: kein Messpegel in der Nähe.</div>';
+  }
   return html;
+}
+
+// Sonnenzeiten als Text, z. B. „Dämmerung 07:29 · Aufgang 08:02 · Untergang 18:34 · Dämmerung 19:07“.
+function sunTimesHtml(date, lat, lng) {
+  if (typeof sunTimes !== 'function') return '';
+  const t = sunTimes(date, lat, lng);
+  if (!t.sunrise && !t.sunset) return '';
+  return `🌅 ${formatClock(t.sunrise)} – 🌇 ${formatClock(t.sunset)} ` +
+    `<span class="muted">(Dämmerung ${formatClock(t.dawn)} / ${formatClock(t.dusk)})</span>`;
 }
 
 // Zeitpunkt (Unix-Sekunden), für den Wetterdaten abgerufen werden:
@@ -373,8 +428,11 @@ function spotVisits(key) {
     .sort((a, b) => (visitTime(b) ?? -Infinity) - (visitTime(a) ?? -Infinity));
 }
 
-function allSpotKeys() {
-  return [...new Set(ratings.filter((r) => RATINGS[r.rating]).map(spotKey))];
+// Spots der Sparte `mode` (null = alle Sparten).
+function allSpotKeys(mode = currentMode) {
+  return [...new Set(ratings
+    .filter((r) => RATINGS[r.rating] && (mode === null || entryMode(r) === mode))
+    .map(spotKey))];
 }
 
 function overallRating(visits) {
@@ -400,7 +458,10 @@ function renderPopupDetails(entry, container) {
   const moon = entry.moon || (!entry.manual && typeof moonPhaseAt === 'function'
     ? moonPhaseAt(new Date(entry.timestamp)) : null);
   const moonLabel = entry.manual && !entry.visitedTime ? 'Mond (Tagesmitte)' : 'Mond';
+  const when = visitTime(entry);
+  const sun = when !== null ? sunTimesHtml(new Date(when), entry.lat, entry.lng) : '';
   container.innerHTML =
+    (sun ? `<div class="cond"><b>Sonne:</b> ${sun}</div>` : '') +
     (moon ? `<div class="cond"><b>${moonLabel}:</b> ${moon.symbol} ${moon.name}, ` +
       `${moon.illumination} % beleuchtet</div>` : '') +
     (entry.manual && !entry.visitedAt
@@ -426,7 +487,7 @@ const FISH_SIZE_MAX = 150;
 
 function fishLabelWithSize(entry, f) {
   const size = entry.fishSizes && entry.fishSizes[f];
-  return size ? `${FISH[f]} ${size} cm` : FISH[f];
+  return size ? `${ALL_FISH[f]} ${size} cm` : ALL_FISH[f];
 }
 
 // Größe einer Fischart per Schieberegler (1–150 cm) mit −/+ für zentimetergenaues Einstellen.
@@ -437,7 +498,7 @@ function buildSizeRow(id, key) {
 
   const name = document.createElement('span');
   name.className = 'size-name';
-  name.textContent = FISH[key];
+  name.textContent = ALL_FISH[key];
   const value = document.createElement('span');
   value.className = 'size-value';
   const slider = document.createElement('input');
@@ -446,7 +507,7 @@ function buildSizeRow(id, key) {
   slider.max = String(FISH_SIZE_MAX);
   slider.step = '1';
   slider.value = String(current || 50);
-  slider.setAttribute('aria-label', `Größe ${FISH[key]} in cm`);
+  slider.setAttribute('aria-label', `Größe ${ALL_FISH[key]} in cm`);
   const show = (v) => { value.textContent = v ? `${v} cm` : '– cm'; };
   show(current);
 
@@ -468,7 +529,7 @@ function buildSizeRow(id, key) {
     btn.type = 'button';
     btn.className = 'size-step';
     btn.textContent = delta < 0 ? '−' : '+';
-    btn.setAttribute('aria-label', `${FISH[key]} ${delta < 0 ? 'kleiner' : 'größer'}`);
+    btn.setAttribute('aria-label', `${ALL_FISH[key]} ${delta < 0 ? 'kleiner' : 'größer'}`);
     btn.addEventListener('click', () => {
       slider.value = String(Math.min(FISH_SIZE_MAX, Math.max(FISH_SIZE_MIN, Number(slider.value) + delta)));
       save();
@@ -502,7 +563,7 @@ function buildFishPicker(id) {
     if (marker && marker.isPopupOpen()) marker.getPopup().update();
   };
 
-  for (const [key, label] of Object.entries(FISH)) {
+  for (const [key, label] of Object.entries(modeFish(entryMode(getEntry(id))))) {
     const chip = document.createElement('button');
     chip.type = 'button';
     chip.className = 'fish-chip';
@@ -521,7 +582,7 @@ function buildFishPicker(id) {
         fish.add(key);
       }
       chip.setAttribute('aria-pressed', String(fish.has(key)));
-      await updateRating({ ...getEntry(id), fish: Object.keys(FISH).filter((k) => fish.has(k)), fishSizes });
+      await updateRating({ ...getEntry(id), fish: Object.keys(ALL_FISH).filter((k) => fish.has(k)), fishSizes });
       renderSizes();
       refreshSpotSummary(spotKey(getEntry(id)));
     });
@@ -529,6 +590,49 @@ function buildFishPicker(id) {
   }
   wrap.append(chips, sizes);
   for (const f of getEntry(id).fish || []) sizes.appendChild(buildSizeRow(id, f));
+  return wrap;
+}
+
+// Köder (Mehrfachauswahl, je nach Sparte) plus optionale Details wie Farbe oder Größe.
+function buildBaitPicker(id) {
+  const wrap = document.createElement('div');
+  wrap.className = 'cond';
+  wrap.innerHTML = '<b>Köder:</b>';
+  const chips = document.createElement('div');
+  chips.className = 'fish-chips';
+  for (const [key, label] of Object.entries(MODES[entryMode(getEntry(id))].baits)) {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'fish-chip';
+    chip.textContent = label;
+    chip.setAttribute('aria-pressed', String((getEntry(id).baits || []).includes(key)));
+    chip.addEventListener('click', async () => {
+      const current = getEntry(id);
+      if (!current) return;
+      const baits = new Set(current.baits || []);
+      if (baits.has(key)) baits.delete(key); else baits.add(key);
+      chip.setAttribute('aria-pressed', String(baits.has(key)));
+      await updateRating({ ...getEntry(id), baits: Object.keys(ALL_BAITS).filter((b) => baits.has(b)) });
+      refreshSpotSummary(spotKey(getEntry(id)));
+    });
+    chips.appendChild(chip);
+  }
+
+  const detail = document.createElement('input');
+  detail.type = 'text';
+  detail.className = 'bait-detail';
+  detail.placeholder = 'Farbe / Größe / Details (optional)';
+  detail.value = getEntry(id).baitDetail || '';
+  const save = async () => {
+    const current = getEntry(id);
+    if (!current || (current.baitDetail || '') === detail.value) return;
+    await updateRating({ ...current, baitDetail: detail.value });
+  };
+  let timer = null;
+  detail.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(save, 600); });
+  detail.addEventListener('blur', () => { clearTimeout(timer); save(); });
+
+  wrap.append(chips, detail);
   return wrap;
 }
 
@@ -678,8 +782,8 @@ function fishSummary(visits) {
       if (size && (!max[f] || size > max[f])) max[f] = size;
     }
   }
-  return Object.keys(FISH).filter((f) => counts[f]).map((f) => {
-    let text = visits.length > 1 ? `${FISH[f]} ${counts[f]}×` : FISH[f];
+  return Object.keys(ALL_FISH).filter((f) => counts[f]).map((f) => {
+    let text = visits.length > 1 ? `${ALL_FISH[f]} ${counts[f]}×` : ALL_FISH[f];
     if (max[f]) text += visits.length > 1 ? ` (max. ${max[f]} cm)` : ` ${max[f]} cm`;
     return text;
   }).join(', ');
@@ -727,9 +831,35 @@ function buildWaterTypePicker(id) {
   return wrap;
 }
 
+// Eigener Name (umbenannt) hat Vorrang vor dem automatisch ermittelten Ortsnamen.
 function spotName(key) {
-  const v = spotVisits(key).find((e) => e.placeName);
+  const visits = spotVisits(key);
+  const custom = visits.find((e) => e.customName);
+  if (custom) return custom.customName;
+  const v = visits.find((e) => e.placeName);
   return v ? v.placeName : null;
+}
+
+async function renameSpot(key) {
+  const visits = spotVisits(key);
+  const current = (visits.find((e) => e.customName) || {}).customName || '';
+  const auto = (visits.find((e) => e.placeName) || {}).placeName || '';
+  const input = prompt(`Name für diesen Spot${auto ? ` (leer = „${auto}“)` : ''}:`, current || auto);
+  if (input === null) return;
+  const name = input.trim();
+  for (const v of visits) {
+    const updated = { ...getEntry(v.id) };
+    if (name && name !== auto) updated.customName = name; else delete updated.customName;
+    await updateRating(updated);
+  }
+  refreshSpotSummary(key);
+}
+
+function baitSummary(visits) {
+  const counts = {};
+  for (const v of visits) for (const b of v.baits || []) counts[b] = (counts[b] || 0) + 1;
+  return Object.keys(ALL_BAITS).filter((b) => counts[b])
+    .map((b) => (visits.length > 1 ? `${ALL_BAITS[b]} ${counts[b]}×` : ALL_BAITS[b])).join(', ');
 }
 
 function ratingBadge(key) {
@@ -740,7 +870,8 @@ function spotHeaderHtml(key) {
   const visits = spotVisits(key);
   const overall = overallRating(visits);
   const name = spotName(key);
-  let html = `<div class="spot-name">📍 ${name ? escapeHtml(name) : '<span class="muted">Ort wird ermittelt …</span>'}</div>`;
+  let html = `<div class="spot-name">📍 ${name ? escapeHtml(name) : '<span class="muted">Ort wird ermittelt …</span>'}` +
+    ' <button type="button" class="spot-rename" aria-label="Spot umbenennen">✎</button></div>';
   html += visits.length > 1
     ? `<div class="spot-title">Gesamt: ${ratingBadge(overall)}</div>` +
       `<div class="muted">${visits.length} Besuche: ` +
@@ -750,8 +881,12 @@ function spotHeaderHtml(key) {
     : `<div class="spot-title">${ratingBadge(overall)}</div><div class="muted">1 Besuch</div>`;
   const fish = fishSummary(visits);
   if (fish) html += `<div class="cond"><b>Gut gefangen:</b> ${fish}</div>`;
+  const baits = baitSummary(visits);
+  if (baits) html += `<div class="cond"><b>Köder:</b> ${baits}</div>`;
   const water = spotWaterTypes(key).map((t) => WATER_TYPES[t]).join(', ');
   if (water) html += `<div class="cond"><b>Gewässer:</b> ${water}</div>`;
+  const sun = sunTimesHtml(new Date(), visits[0].lat, visits[0].lng);
+  if (sun) html += `<div class="cond"><b>Heute:</b> ${sun}</div>`;
   return html;
 }
 
@@ -805,7 +940,7 @@ function buildVisit(entry, open) {
   });
   actions.appendChild(del);
 
-  visit.append(summary, when, details, buildFishPicker(id), buildWaterTypePicker(id),
+  visit.append(summary, when, details, buildFishPicker(id), buildBaitPicker(id), buildWaterTypePicker(id),
     buildNotesField(id), buildPhotoSection(id), actions);
   return visit;
 }
@@ -819,6 +954,12 @@ function buildSpotPopup(key, expandId) {
   const header = document.createElement('div');
   header.className = 'spot-header';
   header.innerHTML = spotHeaderHtml(key);
+  // Kopf wird bei Änderungen neu geschrieben – daher Klick über den Container abfangen.
+  header.addEventListener('click', (e) => {
+    if (!e.target.closest('.spot-rename')) return;
+    L.DomEvent.stopPropagation(e);
+    renameSpot(key);
+  });
 
   const add = document.createElement('button');
   add.className = 'popup-add';
@@ -837,6 +978,17 @@ function buildSpotPopup(key, expandId) {
   }
 
   popup.append(header, buildAppleMapsLink(key), add, list);
+
+  if (allSpotKeys().length > 1) {
+    const merge = document.createElement('button');
+    merge.className = 'popup-secondary';
+    merge.textContent = 'Mit anderem Spot zusammenlegen';
+    merge.addEventListener('click', (e) => {
+      L.DomEvent.stopPropagation(e);
+      startMerge(key);
+    });
+    popup.appendChild(merge);
+  }
 
   if (visits.length > 1) {
     const delSpot = document.createElement('button');
@@ -886,7 +1038,7 @@ function refreshPopup(id) {
 // Besuchen des Spots. Läuft beim Start und nach dem Anlegen neuer Spots.
 const namingSpots = new Set();
 async function ensureSpotNames() {
-  for (const key of allSpotKeys()) {
+  for (const key of allSpotKeys(null)) {
     if (spotName(key) || namingSpots.has(key)) continue;
     namingSpots.add(key);
     const { lat, lng } = spotVisits(key)[0];
@@ -933,7 +1085,71 @@ function loadVisiblePhotos(content) {
   });
 }
 
+// ---- Spots zusammenlegen ----
+
+const mergeBar = document.getElementById('merge-bar');
+let mergeSource = null;
+
+function startMerge(key) {
+  hideBackupReminder();
+  mergeSource = key;
+  map.closePopup();
+  bottomBar.hidden = true;
+  mergeBar.hidden = false;
+}
+
+function stopMerge() {
+  mergeSource = null;
+  mergeBar.hidden = true;
+  bottomBar.hidden = false;
+}
+
+document.getElementById('merge-cancel').addEventListener('click', stopMerge);
+
+// Alle Besuche von `source` wandern zu `target` (Position, Name und Gewässertyp des Ziels;
+// Gewässertypen beider Spots werden vereinigt).
+async function mergeSpots(source, target) {
+  const t = spotVisits(target)[0];
+  const waterTypes = Object.keys(WATER_TYPES)
+    .filter((w) => spotWaterTypes(source).includes(w) || spotWaterTypes(target).includes(w));
+  const targetVisits = spotVisits(target);
+  const custom = (targetVisits.find((e) => e.customName) || {}).customName;
+  const place = (targetVisits.find((e) => e.placeName) || {}).placeName;
+  for (const v of [...spotVisits(source), ...targetVisits]) {
+    const updated = { ...getEntry(v.id), spotId: target, lat: t.lat, lng: t.lng };
+    if (waterTypes.length) updated.waterTypes = waterTypes;
+    if (place) updated.placeName = place;
+    if (custom) updated.customName = custom; else delete updated.customName;
+    await updateRating(updated);
+  }
+  renderRatings();
+  openSpot(target);
+}
+
+async function handleMergeTarget(target) {
+  const source = mergeSource;
+  if (!source || target === source) return;
+  map.closePopup();
+  const a = spotVisits(source)[0];
+  const b = spotVisits(target)[0];
+  const meters = Math.round(distanceKm(a.lat, a.lng, b.lat, b.lng) * 1000);
+  const dist = meters >= 1000 ? `${(meters / 1000).toFixed(1).replace('.', ',')} km` : `${meters} m`;
+  const n = spotVisits(source).length;
+  const ok = confirm(`„${spotName(source) || 'Spot'}“ (${n} ${n === 1 ? 'Besuch' : 'Besuche'}) mit ` +
+    `„${spotName(target) || 'Spot'}“ zusammenlegen? Die Spots liegen ${dist} auseinander. ` +
+    'Alle Besuche landen beim angetippten Spot.');
+  stopMerge();
+  if (ok) {
+    await mergeSpots(source, target);
+    showToast('Spots zusammengelegt');
+  }
+}
+
 function openSpot(key, expandId) {
+  // Spot durch den Kartenfilter ausgeblendet: Filter aufheben, damit er sichtbar wird.
+  if (!markersBySpot.has(key) && filterActive()) {
+    resetMapFilter();
+  }
   const marker = markersBySpot.get(key);
   if (!marker) return;
   if (expandId) marker.setPopupContent(buildSpotPopup(key, expandId));
@@ -944,6 +1160,7 @@ function renderRatings() {
   ratingsLayer.clearLayers();
   markersBySpot.clear();
   for (const key of allSpotKeys()) {
+    if (!spotMatchesFilter(key)) continue;
     const visits = spotVisits(key);
     const overall = RATINGS[overallRating(visits)];
     const allManual = visits.every((v) => v.manual);
@@ -967,7 +1184,11 @@ function renderRatings() {
         autoPanPaddingBottomRight: L.point(12, 100),
       })
       .addTo(ratingsLayer);
-    marker.on('popupopen', () => loadVisiblePhotos(marker.getPopup().getContent()));
+    marker.on('click', () => { if (mergeSource) handleMergeTarget(key); });
+    marker.on('popupopen', () => {
+      if (mergeSource) return;
+      loadVisiblePhotos(marker.getPopup().getContent());
+    });
     marker.on('popupclose', () => marker.getPopup().getContent()
       .querySelectorAll('.photo-section').forEach((sec) => sec.clearPhotos()));
     markersBySpot.set(key, marker);
@@ -1059,7 +1280,14 @@ function localDateString(date) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
+// Die Sicherungs-Erinnerung darf Bedienelemente nicht verdecken.
+function hideBackupReminder() {
+  const el = document.getElementById('backup-reminder');
+  if (el) el.hidden = true;
+}
+
 function openMenu(mode) {
+  hideBackupReminder();
   menuMode = mode;
   visitDateField.hidden = mode === 'current';
   visitDateLabelEl.innerHTML = mode === 'visit'
@@ -1082,6 +1310,7 @@ function closeMenu() {
 }
 
 function startPicking() {
+  hideBackupReminder();
   map.closePopup();
   ratingsLayer.eachLayer((layer) => layer.closePopup());
   bottomBar.hidden = true;
@@ -1163,11 +1392,14 @@ async function saveEntry(entry, { fetchData, openPopup }) {
 
 function buildEntry(rating, lat, lng, { accuracy = null, spotId, dated }) {
   const now = new Date();
-  const entry = { id: newId(now), lat, lng, accuracy, rating, timestamp: now.toISOString() };
+  const entry = { id: newId(now), mode: currentMode, lat, lng, accuracy, rating, timestamp: now.toISOString() };
   if (spotId) {
     entry.spotId = spotId;
-    const name = spotName(spotId);
-    if (name) entry.placeName = name;
+    const visits = spotVisits(spotId);
+    const place = (visits.find((e) => e.placeName) || {}).placeName;
+    const custom = (visits.find((e) => e.customName) || {}).customName;
+    if (place) entry.placeName = place;
+    if (custom) entry.customName = custom;
     const waterTypes = spotWaterTypes(spotId);
     if (waterTypes.length) entry.waterTypes = waterTypes;
   }
@@ -1243,20 +1475,192 @@ const exportButton = document.getElementById('export-button');
 const importInput = document.getElementById('import-input');
 let persistent = false;
 
+const BACKUP_TIME_KEY = 'letzte-sicherung';
+const BACKUP_COUNT_KEY = 'eintraege-bei-sicherung';
+const REMINDER_SNOOZE_KEY = 'sicherungs-erinnerung-pausiert-bis';
+const REMINDER_DAYS = 14;
+const REMINDER_NEW_ENTRIES = 10;
+
+function readStored(key) {
+  try { return localStorage.getItem(key); } catch { return null; }
+}
+
+function writeStored(key, value) {
+  try { localStorage.setItem(key, value); } catch { /* ohne Speicher */ }
+}
+
 function updateBackupInfo() {
   const count = ratings.length;
+  const byMode = (m) => ratings.filter((r) => entryMode(r) === m).length;
+  const last = readStored(BACKUP_TIME_KEY);
   backupInfo.textContent =
-    `${count} ${count === 1 ? 'Bewertung' : 'Bewertungen'} auf diesem Gerät gespeichert. ` +
-    (persistent
-      ? 'Der Browser hat dauerhaften Speicher zugesagt.'
-      : 'Tipp: Regelmäßig sichern, damit die Daten auch beim Gerätewechsel erhalten bleiben.');
+    `${count} ${count === 1 ? 'Bewertung' : 'Bewertungen'} auf diesem Gerät ` +
+    `(Raubfisch ${byMode('raubfisch')}, Friedfisch ${byMode('friedfisch')}). ` +
+    (last
+      ? `Letzte Sicherung: ${new Date(last).toLocaleDateString('de-DE')}.`
+      : 'Noch keine Sicherung erstellt.');
 }
 
 backupToggle.addEventListener('click', () => {
   backupPanel.hidden = !backupPanel.hidden;
   backupToggle.setAttribute('aria-expanded', String(!backupPanel.hidden));
+  if (!backupPanel.hidden) closeFilterPanel();
   updateBackupInfo();
+  updateModeUI();
 });
+
+function markBackupDone() {
+  writeStored(BACKUP_TIME_KEY, new Date().toISOString());
+  writeStored(BACKUP_COUNT_KEY, String(ratings.length));
+  backupReminder.hidden = true;
+  updateBackupInfo();
+}
+
+// ---- Sicherungs-Erinnerung ----
+
+const backupReminder = document.getElementById('backup-reminder');
+const backupReminderText = document.getElementById('backup-reminder-text');
+
+function checkBackupReminder() {
+  if (!ratings.length) return;
+  const snoozed = Number(readStored(REMINDER_SNOOZE_KEY) || 0);
+  if (Date.now() < snoozed) return;
+  const last = readStored(BACKUP_TIME_KEY);
+  const countAtBackup = Number(readStored(BACKUP_COUNT_KEY) || 0);
+  const newEntries = ratings.length - countAtBackup;
+  const days = last ? (Date.now() - new Date(last).getTime()) / 86400000 : Infinity;
+  let reason = null;
+  if (!last && ratings.length >= 3) reason = 'Du hast noch nie eine Sicherung erstellt.';
+  else if (last && newEntries >= REMINDER_NEW_ENTRIES) reason = `Seit der letzten Sicherung sind ${newEntries} Einträge dazugekommen.`;
+  else if (last && newEntries > 0 && days >= REMINDER_DAYS) reason = `Die letzte Sicherung ist ${Math.floor(days)} Tage her.`;
+  if (!reason) return;
+  backupReminderText.textContent = `${reason} Sichere deine Daten, z. B. in iCloud Drive, damit sie auch bei Handyverlust erhalten bleiben.`;
+  backupReminder.hidden = false;
+}
+
+document.getElementById('backup-reminder-later').addEventListener('click', () => {
+  writeStored(REMINDER_SNOOZE_KEY, String(Date.now() + 3 * 86400000));
+  backupReminder.hidden = true;
+});
+
+document.getElementById('backup-reminder-now').addEventListener('click', () => {
+  backupReminder.hidden = true;
+  backupPanel.hidden = false;
+  backupToggle.setAttribute('aria-expanded', 'true');
+  updateBackupInfo();
+  updateModeUI();
+  exportButton.click();
+});
+
+// ---- Sparte wechseln (Raubfisch / Friedfisch) ----
+
+const modeBadge = document.getElementById('mode-badge');
+
+function updateModeUI() {
+  modeBadge.textContent = `${MODES[currentMode].icon} ${MODES[currentMode].label}`;
+  document.querySelectorAll('.mode-switch button').forEach((b) => {
+    b.setAttribute('aria-pressed', String(b.dataset.mode === currentMode));
+  });
+}
+
+function setMode(mode) {
+  if (!MODES[mode] || mode === currentMode) return;
+  currentMode = mode;
+  writeStored(MODE_KEY, mode);
+  stopMerge();
+  map.closePopup();
+  mapFilter.fish = null; // Fischarten unterscheiden sich je Sparte
+  renderFilterPanel();
+  renderRatings();
+  updateModeUI();
+  updateBackupInfo();
+  const n = allSpotKeys().length;
+  showToast(`${MODES[mode].icon} ${MODES[mode].label}-Karte: ${n} ${n === 1 ? 'Spot' : 'Spots'}`);
+}
+
+document.querySelectorAll('.mode-switch button').forEach((b) => {
+  b.addEventListener('click', () => setMode(b.dataset.mode));
+});
+modeBadge.addEventListener('click', () => {
+  backupPanel.hidden = false;
+  backupToggle.setAttribute('aria-expanded', 'true');
+  closeFilterPanel();
+  updateBackupInfo();
+  updateModeUI();
+});
+
+// ---- Kartenfilter ----
+
+const filterToggle = document.getElementById('filter-toggle');
+const filterPanel = document.getElementById('filter-panel');
+const mapFilter = { fish: null, water: null, minScore: 0 };
+const MIN_RATING_OPTIONS = [[0, 'Alle'], [2, 'Mittel+'], [3, 'Gut+'], [4, 'Sehr gut']];
+
+function filterActive() {
+  return Boolean(mapFilter.fish || mapFilter.water || mapFilter.minScore);
+}
+
+function spotMatchesFilter(key) {
+  if (!filterActive()) return true;
+  const visits = spotVisits(key);
+  if (mapFilter.fish && !visits.some((v) => (v.fish || []).includes(mapFilter.fish))) return false;
+  if (mapFilter.water && !spotWaterTypes(key).includes(mapFilter.water)) return false;
+  if (mapFilter.minScore && SCORES[overallRating(visits)] < mapFilter.minScore) return false;
+  return true;
+}
+
+function chipRow(container, options, isSelected, onSelect) {
+  container.innerHTML = '';
+  for (const [value, label] of options) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'fish-chip';
+    b.textContent = label;
+    b.setAttribute('aria-pressed', String(isSelected(value)));
+    b.addEventListener('click', () => onSelect(value));
+    container.appendChild(b);
+  }
+}
+
+function applyMapFilter() {
+  renderFilterPanel();
+  renderRatings();
+}
+
+function renderFilterPanel() {
+  chipRow(document.getElementById('filter-fish'), [[null, 'Alle'], ...Object.entries(modeFish())],
+    (v) => v === mapFilter.fish, (v) => { mapFilter.fish = v; applyMapFilter(); });
+  chipRow(document.getElementById('filter-water'), [[null, 'Alle'], ...Object.entries(WATER_TYPES)],
+    (v) => v === mapFilter.water, (v) => { mapFilter.water = v; applyMapFilter(); });
+  chipRow(document.getElementById('filter-rating'), MIN_RATING_OPTIONS,
+    (v) => v === mapFilter.minScore, (v) => { mapFilter.minScore = v; applyMapFilter(); });
+  const n = [mapFilter.fish, mapFilter.water, mapFilter.minScore].filter(Boolean).length;
+  filterToggle.textContent = n ? `Filter (${n})` : 'Filter';
+  filterToggle.classList.toggle('active', n > 0);
+}
+
+function resetMapFilter() {
+  mapFilter.fish = null;
+  mapFilter.water = null;
+  mapFilter.minScore = 0;
+  applyMapFilter();
+}
+
+function closeFilterPanel() {
+  filterPanel.hidden = true;
+  filterToggle.setAttribute('aria-expanded', 'false');
+}
+
+filterToggle.addEventListener('click', () => {
+  filterPanel.hidden = !filterPanel.hidden;
+  filterToggle.setAttribute('aria-expanded', String(!filterPanel.hidden));
+  if (!filterPanel.hidden) {
+    backupPanel.hidden = true;
+    backupToggle.setAttribute('aria-expanded', 'false');
+    renderFilterPanel();
+  }
+});
+document.getElementById('filter-reset').addEventListener('click', resetMapFilter);
 
 function blobToDataUrl(blob) {
   return new Promise((resolve, reject) => {
@@ -1265,6 +1669,23 @@ function blobToDataUrl(blob) {
     reader.onerror = () => reject(reader.error);
     reader.readAsDataURL(blob);
   });
+}
+
+// Sicherung erstellen. Auf dem iPhone geht sie über das Teilen-Menü direkt in „Dateien“
+// (z. B. iCloud Drive). Teilen braucht einen frischen Tipp, daher zwei Schritte:
+// erst Datei erstellen, dann „In Dateien sichern“ antippen.
+const shareBackupButton = document.getElementById('share-backup');
+let pendingBackupFile = null;
+
+function downloadFile(file) {
+  const url = URL.createObjectURL(file);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = file.name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
 
 exportButton.addEventListener('click', async () => {
@@ -1279,16 +1700,33 @@ exportButton.addEventListener('click', async () => {
     console.warn('Fotos konnten nicht gelesen werden', err);
     photos = [];
   }
-  const data = JSON.stringify({ app: 'standort-bewertung', version: 2, ratings, photos });
-  const blob = new Blob([data], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `standort-bewertungen-${new Date().toISOString().slice(0, 10)}.json`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 10000);
+  const data = JSON.stringify({ app: 'standort-bewertung', version: 3, ratings, photos });
+  const name = `angel-spots-sicherung-${localDateString(new Date())}.json`;
+  const file = new File([data], name, { type: 'application/json' });
+
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    pendingBackupFile = file;
+    shareBackupButton.hidden = false;
+    showToast('Sicherung erstellt – jetzt „In Dateien / iCloud Drive sichern“ antippen');
+  } else {
+    downloadFile(file);
+    markBackupDone();
+  }
+});
+
+shareBackupButton.addEventListener('click', async () => {
+  if (!pendingBackupFile) return;
+  try {
+    await navigator.share({ files: [pendingBackupFile], title: 'Angel-Spots Sicherung' });
+    markBackupDone();
+    showToast('Sicherung gespeichert');
+  } catch (err) {
+    if (err && err.name === 'AbortError') return; // abgebrochen
+    downloadFile(pendingBackupFile);
+    markBackupDone();
+  }
+  pendingBackupFile = null;
+  shareBackupButton.hidden = true;
 });
 
 importInput.addEventListener('change', async () => {
@@ -1327,10 +1765,13 @@ const ratingsReady = loadRatings();
 
 (async () => {
   await ratingsReady;
+  updateModeUI();
+  renderFilterPanel();
   renderRatings();
   ensureSpotNames();
   persistent = await requestPersistentStorage();
   updateBackupInfo();
+  checkBackupReminder();
 })();
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch(() => {});

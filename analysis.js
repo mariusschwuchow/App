@@ -14,6 +14,9 @@ const ANALYSIS_FEATURES = [
   { key: 'cloudCover', label: 'Bewölkung', tolerance: 50, weight: 1 },
   { key: 'precipitation', label: 'Niederschlag', tolerance: 2, weight: 1 },
   { key: 'moonPhase', label: 'Mondphase', tolerance: 0.15, weight: 1, circular: 1 },
+  // Für die Wassertemperatur gibt es keine Vorhersage: verglichen wird mit dem aktuell
+  // gemessenen Wert (sie ändert sich nur langsam).
+  { key: 'waterTemp', label: 'Wassertemperatur', tolerance: 4, weight: 1.5 },
 ];
 
 const FORECAST_CACHE_MS = 30 * 60 * 1000;
@@ -48,6 +51,7 @@ function visitFeatures(entry) {
     cloudCover: num(w.cloudCover),
     precipitation: num(w.precipitation),
     moonPhase,
+    waterTemp: c.waterTemp ? num(c.waterTemp.value) : null,
   };
 }
 
@@ -162,7 +166,7 @@ function analyzeSpots(forecasts, spotPoints, dayOffset, fish) {
       const features = visitFeatures(v);
       if (score === null || !features) continue;
       const hour = visitHour(v);
-      const forecast = forecastFeatures(hourly, dayTarget(dayOffset, hour));
+      const forecast = { ...forecastFeatures(hourly, dayTarget(dayOffset, hour)), waterTemp: spot.waterTemp ?? null };
       const sim = similarity(features, forecast);
       if (!sim) continue;
       matches.push({ visit: v, score, sim: sim.value, parts: sim.parts, hour, forecast });
@@ -186,9 +190,17 @@ function analyzeSpots(forecasts, spotPoints, dayOffset, fish) {
     // Empfehlung: erwartete Bewertung, abgeschwächt, wenn kein Besuch wirklich ähnlich war.
     const recommendation = Math.round(((expected - 1) / 3) * best.sim * 100);
 
+    // Köder-Tipp: Köder aus guten Besuchen, gewichtet nach Ähnlichkeit.
+    const baitWeights = {};
+    for (const m of goodMatches) {
+      for (const b of m.visit.baits || []) baitWeights[b] = (baitWeights[b] || 0) + m.sim ** 3;
+    }
+    const bestBait = Object.keys(baitWeights).sort((x, y) => baitWeights[y] - baitWeights[x])[0] || null;
+
     results.push({
       key: spot.key, visits: spot.visits, lat: spot.lat, lng: spot.lng,
-      expected, recommendation, best, bestGood, matchCount: matches.length,
+      expected, recommendation, best, bestGood, bestBait, matchCount: matches.length,
+      waterTemp: spot.waterTemp ?? null,
     });
   });
   return results.sort((a, b) => b.recommendation - a.recommendation);
@@ -204,6 +216,7 @@ let analysisDay = 0;
 let analysisFishFilter = null;
 let analysisWaterFilter = null;
 const analysisWater = document.getElementById('analysis-water');
+const analysisTitle = document.getElementById('analysis-title');
 
 function dayLabel(offset) {
   const d = new Date();
@@ -221,8 +234,10 @@ function renderAnalysisControls() {
     b.addEventListener('click', () => { analysisDay = offset; runAnalysis(); });
     analysisDays.appendChild(b);
   });
+  if (analysisFishFilter && !modeFish()[analysisFishFilter]) analysisFishFilter = null;
+  analysisTitle.textContent = `Spot-Analyse – ${MODES[currentMode].label}`;
   analysisFish.innerHTML = '';
-  [[null, 'Alle'], ...Object.entries(FISH)].forEach(([key, label]) => {
+  [[null, 'Alle'], ...Object.entries(modeFish())].forEach(([key, label]) => {
     const b = document.createElement('button');
     b.className = 'fish-chip';
     b.textContent = label;
@@ -255,6 +270,7 @@ function forecastSummary(f) {
   if (f.windSpeed !== null) parts.push(`Wind ${Math.round(f.windSpeed)} km/h ${windDirectionName(f.windDirectionRaw)}`);
   if (f.cloudCover !== null) parts.push(`Wolken ${Math.round(f.cloudCover)} %`);
   if (f.precipitation) parts.push(`Regen ${fmt(f.precipitation, 'mm')}`);
+  if (f.waterTemp !== null && f.waterTemp !== undefined) parts.push(`Wasser ${fmt(f.waterTemp, '°C')} (aktuell gemessen)`);
   return parts.join(' · ');
 }
 
@@ -292,7 +308,10 @@ function renderAnalysisResults(results, skipped) {
     const [label, cls] = recommendationLabel(r.recommendation);
     const expectedKey = RATING_BY_SCORE[Math.min(4, Math.max(1, Math.round(r.expected)))];
     const ref = r.bestGood && r.bestGood.sim >= r.best.sim - 0.05 ? r.bestGood : r.best;
-    const fish = (ref.visit.fish || []).map((f) => FISH[f]).join(', ');
+    const fish = (ref.visit.fish || []).map((f) => ALL_FISH[f]).join(', ');
+    const day = new Date();
+    day.setDate(day.getDate() + analysisDay);
+    const sun = sunTimesHtml(day, r.lat, r.lng);
     const topParts = [...ref.parts].sort((a, b) => b.value - a.value);
     const fits = topParts.filter((p) => p.value >= 0.7).map((p) => p.label);
     const misses = topParts.filter((p) => p.value < 0.3).map((p) => p.label);
@@ -310,6 +329,9 @@ function renderAnalysisResults(results, skipped) {
       `<div class="cond"><b>Am ähnlichsten:</b> ${escapeHtml(visitDateLabel(ref.visit))} ` +
       `${ratingBadge(ref.visit.rating)}${fish ? ` <span class="muted">${fish}</span>` : ''} – ` +
       `${Math.round(ref.sim * 100)} % Übereinstimmung</div>` +
+      (r.bestBait ? `<div class="cond"><b>Köder-Tipp:</b> ${ALL_BAITS[r.bestBait]} ` +
+        '<span class="muted">(lief bei ähnlichem Wetter)</span></div>' : '') +
+      (sun ? `<div class="cond"><b>Sonne:</b> ${sun}</div>` : '') +
       (fits.length ? `<div class="cond muted">Passt: ${fits.join(', ')}</div>` : '') +
       (misses.length ? `<div class="cond muted">Weicht ab: ${misses.join(', ')}</div>` : '');
 
@@ -351,8 +373,19 @@ async function runAnalysis() {
   }
 
   analysisList.innerHTML = '<p class="analysis-empty">Vorhersage wird geladen …</p>';
+  const forecastsPromise = fetchSpotForecasts(withData);
+  forecastsPromise.catch(() => {}); // Fehler wird unten behandelt
+  // Aktuelle Wassertemperatur je Spot (falls ein Messpegel in der Nähe ist), parallel zur Vorhersage.
   try {
-    const forecasts = await fetchSpotForecasts(withData);
+    const stations = await fetchWaterTempStations();
+    for (const s of withData) {
+      const near = nearestWaterTempStation(stations, s.lat, s.lng);
+      const m = near && near.ts.currentMeasurement;
+      s.waterTemp = m && Number.isFinite(m.value) ? Math.round(m.value * 10) / 10 : null;
+    }
+  } catch { /* ohne Wassertemperatur weiterrechnen */ }
+  try {
+    const forecasts = await forecastsPromise;
     if (run !== analysisRun) return; // inzwischen anderer Tag/Filter gewählt
     renderAnalysisResults(analyzeSpots(forecasts, withData, analysisDay, analysisFishFilter), skipped);
   } catch {
